@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { initializeSchema } from "../config/database";
+import { initializeSchema, seedData } from "../config/database";
 
 // Singleton promise to prevent multiple simultaneous initializations
 let schemaInitPromise: Promise<void> | null = null;
@@ -10,7 +10,7 @@ let schemaInitPromise: Promise<void> | null = null;
  * requests arrive simultaneously on a cold start.
  */
 export const ensureSchema = async (
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
@@ -23,7 +23,11 @@ export const ensureSchema = async (
     }
 
     // Start initialization and store the promise
-    schemaInitPromise = initializeSchema();
+    schemaInitPromise = (async () => {
+      await initializeSchema();
+      // Also seed data after schema is initialized
+      await seedData();
+    })();
     await schemaInitPromise;
 
     // Clear the promise after successful initialization
