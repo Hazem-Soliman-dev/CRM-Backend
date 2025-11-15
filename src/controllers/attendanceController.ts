@@ -3,7 +3,7 @@ import { AttendanceModel, AttendanceFilters } from '../models/attendanceModel';
 import { ActivityModel } from '../models/activityModel';
 import { successResponse, paginatedResponse } from '../utils/response';
 import { asyncHandler } from '../utils/asyncHandler';
-import { ValidationError } from '../utils/AppError';
+import { ValidationError, NotFoundError } from '../utils/AppError';
 
 /**
  * Mark attendance (create or update)
@@ -87,10 +87,10 @@ export const markAttendance = asyncHandler(async (req: Request, res: Response) =
   // Map to frontend format
   const mappedAttendance = {
     ...attendance,
-    user_id: attendance.employee_id,
-    clock_in: attendance.check_in_time ? `${attendance.date} ${attendance.check_in_time}` : undefined,
-    clock_out: attendance.check_out_time ? `${attendance.date} ${attendance.check_out_time}` : undefined,
-    notes: attendance.remarks
+    user_id: attendance.user_id,
+    clock_in: attendance.clock_in,
+    clock_out: attendance.clock_out,
+    notes: attendance.notes
   };
 
   successResponse(res, mappedAttendance, 'Attendance marked successfully', 201);
