@@ -443,10 +443,6 @@ export class AttendanceModel {
    * Format attendance record from database row
    */
   private static formatAttendance(row: any): Attendance {
-    // Extract date from clock_in for compatibility
-    const clockInDate = row.clock_in ? new Date(row.clock_in) : null;
-    const dateStr = clockInDate ? clockInDate.toISOString().split('T')[0] : '';
-
     return {
       id: row.id ? row.id.toString() : '',
       user_id: row.user_id ? row.user_id.toString() : '',

@@ -37,7 +37,7 @@ export const validateStatusUpdate = [
 export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(errors.array().map((error: any) => error.msg).join(', '));
   }
 
   const users = await UserModel.getAllUsers(req.user!.role, req.user!.userId);
@@ -49,7 +49,7 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
 export const getUserById = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(errors.array().map((error: any) => error.msg).join(', '));
   }
 
   const user = await UserModel.findUserById(req.params.id);
@@ -61,7 +61,7 @@ export const getUserById = asyncHandler(async (req: Request, res: Response) => {
 export const createUser = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(errors.array().map((error: any) => error.msg).join(', '));
   }
 
   const userData: CreateUserData = {
@@ -82,7 +82,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
 export const updateUser = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(errors.array().map((error: any) => error.msg).join(', '));
   }
 
   const updateData: UpdateUserData = {
@@ -102,7 +102,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(errors.array().map((error: any) => error.msg).join(', '));
   }
 
   await UserModel.deleteUser(req.params.id);
@@ -114,7 +114,7 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
 export const updateUserStatus = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(errors.array().map((error: any) => error.msg).join(', '));
   }
 
   const user = await UserModel.updateUser(req.params.id, { status: req.body.status });
@@ -126,7 +126,7 @@ export const updateUserStatus = asyncHandler(async (req: Request, res: Response)
 export const updateUserPassword = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(errors.array().map((error: any) => error.msg).join(', '));
   }
 
   const { currentPassword, newPassword } = req.body;

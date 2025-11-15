@@ -235,7 +235,7 @@ export class OwnerModel {
   static async assignManager(ownerId: string, managerId: string | null): Promise<Owner> {
     try {
       // Verify owner exists
-      const owner = await this.findOwnerById(ownerId);
+      await this.findOwnerById(ownerId);
       
       const db = getDatabase();
       // If managerId is provided, verify the user exists and has appropriate role
