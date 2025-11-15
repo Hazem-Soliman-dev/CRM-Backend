@@ -6,6 +6,7 @@ import compression from "compression";
 import dotenv from "dotenv";
 import { errorHandler } from "./middleware/errorHandler";
 import { rateLimiter } from "./middleware/rateLimiter";
+import { ensureSchema } from "./middleware/ensureSchema";
 import routes from "./routes";
 import { testConnection, initializeDatabase } from "./config/database";
 
@@ -92,6 +93,10 @@ if (process.env.NODE_ENV === "development") {
 } else {
   app.use(morgan("combined"));
 }
+
+// Ensure database schema is initialized before handling requests
+// This is critical for Vercel serverless where schema initialization is skipped
+app.use(ensureSchema);
 
 // API routes
 app.use("/api/v1", routes);
