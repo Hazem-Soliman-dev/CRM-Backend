@@ -247,17 +247,21 @@ export const getTodayTasks = asyncHandler(
 
     // Sales
     if (role === "admin" || role === "sales") {
-      const leadsDue = db
-        .prepare(
-          `
+      // Important: don't pass undefined params when query has no placeholders.
+      // Call .all() with no args if there is no ? in the SQL.
+      const leadsStmt = db.prepare(
+        `
         SELECT id, lead_id as code, name, next_followup 
         FROM leads 
         WHERE date(next_followup) = date('now') ${
           role === "sales" ? "AND agent_id = ?" : ""
         }
       `
-        )
-        .all(role === "sales" ? userId : undefined) as any[];
+      );
+
+      const leadsDue = (role === "sales"
+        ? leadsStmt.all(userId)
+        : leadsStmt.all()) as any[];
       pushRows(
         leadsDue,
         "lead_followup",
@@ -268,17 +272,19 @@ export const getTodayTasks = asyncHandler(
 
     // Reservation
     if (role === "admin" || role === "reservation") {
-      const bookingsToday = db
-        .prepare(
-          `
+      const bookingsStmt = db.prepare(
+        `
         SELECT id, reservation_id as code, destination, departure_date 
         FROM reservations 
         WHERE date(departure_date) = date('now') ${
           role === "reservation" ? "AND created_by = ?" : ""
         }
       `
-        )
-        .all(role === "reservation" ? userId : undefined) as any[];
+      );
+
+      const bookingsToday = (role === "reservation"
+        ? bookingsStmt.all(userId)
+        : bookingsStmt.all()) as any[];
       pushRows(
         bookingsToday,
         "reservation_departure",
@@ -308,17 +314,19 @@ export const getTodayTasks = asyncHandler(
 
     // Operations
     if (role === "admin" || role === "operations") {
-      const opsTasks = db
-        .prepare(
-          `
+      const opsStmt = db.prepare(
+        `
         SELECT id, task_id as code, title, scheduled_at 
         FROM operations_tasks 
         WHERE date(scheduled_at) = date('now') ${
           role === "operations" ? "AND assigned_to = ?" : ""
         }
       `
-        )
-        .all(role === "operations" ? userId : undefined) as any[];
+      );
+
+      const opsTasks = (role === "operations"
+        ? opsStmt.all(userId)
+        : opsStmt.all()) as any[];
       pushRows(
         opsTasks,
         "operations_task",
