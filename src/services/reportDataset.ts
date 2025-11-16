@@ -20,7 +20,7 @@ export async function getReportRows(reportId: string, filters: Filters): Promise
 	}
 }
 
-async function buildMonthlyRevenueRows(filters: Filters) {
+async function buildMonthlyRevenueRows(_filters: Filters) {
 	// TODO: Use filters.dateFrom/dateTo to query finance/reservations
 	return [
 		{ Month: "Aug", Revenue: 245000, Bookings: 156, Profit: 61250 },

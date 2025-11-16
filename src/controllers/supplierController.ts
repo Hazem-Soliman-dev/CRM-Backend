@@ -39,7 +39,12 @@ export const validateStatusUpdate = [
 export const getAllSuppliers = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const filters: SupplierFilters = {
@@ -66,7 +71,12 @@ export const getAllSuppliers = asyncHandler(async (req: Request, res: Response) 
 export const getSupplierById = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const supplier = await SupplierModel.findSupplierById(req.params.id);
@@ -78,7 +88,12 @@ export const getSupplierById = asyncHandler(async (req: Request, res: Response) 
 export const createSupplier = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const supplierData: CreateSupplierData = {
@@ -99,7 +114,12 @@ export const createSupplier = asyncHandler(async (req: Request, res: Response) =
 export const updateSupplier = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const updateData: UpdateSupplierData = {
@@ -121,7 +141,12 @@ export const updateSupplier = asyncHandler(async (req: Request, res: Response) =
 export const deleteSupplier = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   await SupplierModel.deleteSupplier(req.params.id);
@@ -133,7 +158,12 @@ export const deleteSupplier = asyncHandler(async (req: Request, res: Response) =
 export const updateSupplierStatus = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const supplier = await SupplierModel.updateSupplierStatus(req.params.id, req.body.status);
@@ -145,7 +175,12 @@ export const updateSupplierStatus = asyncHandler(async (req: Request, res: Respo
 export const getSupplierStats = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const stats = await SupplierModel.getSupplierStats(req.params.id);

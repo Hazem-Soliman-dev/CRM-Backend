@@ -3,7 +3,7 @@ import { SalesCaseModel, CreateSalesCaseData, UpdateSalesCaseData, SalesCaseFilt
 import { successResponse } from '../utils/response';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ValidationError } from '../utils/AppError';
-import { body, param, query, validationResult } from 'express-validator';
+import { body, param, validationResult } from 'express-validator';
 
 // Validation rules
 export const validateCreateSalesCase = [

@@ -259,9 +259,9 @@ export const getTodayTasks = asyncHandler(
       `
       );
 
-      const leadsDue = (role === "sales"
-        ? leadsStmt.all(userId)
-        : leadsStmt.all()) as any[];
+      const leadsDue = (
+        role === "sales" ? leadsStmt.all(userId) : leadsStmt.all()
+      ) as any[];
       pushRows(
         leadsDue,
         "lead_followup",
@@ -282,9 +282,9 @@ export const getTodayTasks = asyncHandler(
       `
       );
 
-      const bookingsToday = (role === "reservation"
-        ? bookingsStmt.all(userId)
-        : bookingsStmt.all()) as any[];
+      const bookingsToday = (
+        role === "reservation" ? bookingsStmt.all(userId) : bookingsStmt.all()
+      ) as any[];
       pushRows(
         bookingsToday,
         "reservation_departure",
@@ -324,9 +324,9 @@ export const getTodayTasks = asyncHandler(
       `
       );
 
-      const opsTasks = (role === "operations"
-        ? opsStmt.all(userId)
-        : opsStmt.all()) as any[];
+      const opsTasks = (
+        role === "operations" ? opsStmt.all(userId) : opsStmt.all()
+      ) as any[];
       pushRows(
         opsTasks,
         "operations_task",
