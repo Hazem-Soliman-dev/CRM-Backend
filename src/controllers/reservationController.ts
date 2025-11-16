@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { ReservationModel, CreateReservationData, UpdateReservationData, ReservationFilters } from '../models/reservationModel';
 import { successResponse, paginatedResponse } from '../utils/response';
 import { asyncHandler } from '../utils/asyncHandler';
-import { ValidationError } from '../utils/AppError';
+import { ValidationError, AppError } from '../utils/AppError';
 import getDatabase from '../config/database';
 
 // Get all reservations

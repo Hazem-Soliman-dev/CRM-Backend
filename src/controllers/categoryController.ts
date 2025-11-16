@@ -3,7 +3,7 @@ import { CategoryModel, CreateCategoryData, UpdateCategoryData, CategoryFilters 
 import { successResponse } from '../utils/response';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ValidationError } from '../utils/AppError';
-import { body, param, query, validationResult } from 'express-validator';
+import { body, param, validationResult } from 'express-validator';
 
 // Validation rules
 export const validateCreateCategory = [
@@ -27,7 +27,12 @@ export const validateCategoryId = [
 export const getAllCategories = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const filters: CategoryFilters = {
@@ -61,7 +66,12 @@ export const getCategoryTree = asyncHandler(async (_req: Request, res: Response)
 export const getCategoryById = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const category = await CategoryModel.findCategoryById(req.params.id);
@@ -73,7 +83,12 @@ export const getCategoryById = asyncHandler(async (req: Request, res: Response) 
 export const createCategory = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const categoryData: CreateCategoryData = {
@@ -91,7 +106,12 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
 export const updateCategory = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const updateData: UpdateCategoryData = {
@@ -109,7 +129,12 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
 export const deleteCategory = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   await CategoryModel.deleteCategory(req.params.id);
@@ -121,7 +146,12 @@ export const deleteCategory = asyncHandler(async (req: Request, res: Response) =
 export const getCategoryStats = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const stats = await CategoryModel.getCategoryStats(req.params.id);

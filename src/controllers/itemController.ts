@@ -3,7 +3,7 @@ import { ItemModel, CreateItemData, UpdateItemData, ItemFilters } from '../model
 import { successResponse } from '../utils/response';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ValidationError } from '../utils/AppError';
-import { body, param, query, validationResult } from 'express-validator';
+import { body, param, validationResult } from 'express-validator';
 
 // Validation rules
 export const validateCreateItem = [
@@ -48,7 +48,12 @@ export const validateStatusUpdate = [
 export const getAllItems = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const filters: ItemFilters = {
@@ -78,7 +83,12 @@ export const getAllItems = asyncHandler(async (req: Request, res: Response) => {
 export const getItemById = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const item = await ItemModel.findItemById(req.params.id);
@@ -90,7 +100,12 @@ export const getItemById = asyncHandler(async (req: Request, res: Response) => {
 export const createItem = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const itemData: CreateItemData = {
@@ -113,7 +128,12 @@ export const createItem = asyncHandler(async (req: Request, res: Response) => {
 export const updateItem = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const updateData: UpdateItemData = {
@@ -137,7 +157,12 @@ export const updateItem = asyncHandler(async (req: Request, res: Response) => {
 export const deleteItem = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   await ItemModel.deleteItem(req.params.id);
@@ -149,7 +174,12 @@ export const deleteItem = asyncHandler(async (req: Request, res: Response) => {
 export const updateItemStock = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const item = await ItemModel.updateItemStock(req.params.id, req.body.quantity);
@@ -161,7 +191,12 @@ export const updateItemStock = asyncHandler(async (req: Request, res: Response) 
 export const updateItemStatus = asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new ValidationError(
+      errors
+        .array()
+        .map((error: any) => error.msg)
+        .join(", ")
+    );
   }
 
   const item = await ItemModel.updateItemStatus(req.params.id, req.body.status);
