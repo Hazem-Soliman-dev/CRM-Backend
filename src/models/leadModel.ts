@@ -198,7 +198,10 @@ export class LeadModel {
         ${whereClause}
       `;
       const db = getDatabase();
-      const countResult = db.prepare(countQuery).get(...queryParams) as any;
+      
+      // Filter out undefined values for count query
+      const countParams = queryParams.filter(p => p !== undefined);
+      const countResult = db.prepare(countQuery).get(...countParams) as any;
       const total = countResult.total;
 
       // Main query
@@ -215,7 +218,9 @@ export class LeadModel {
         LIMIT ? OFFSET ?
       `;
 
-      const leads = db.prepare(query).all(...queryParams, limit, offset) as any[];
+      // Combine query params with limit and offset, filtering out undefined
+      const allParams = [...queryParams.filter(p => p !== undefined), limit, offset];
+      const leads = db.prepare(query).all(...allParams) as any[];
 
       const formattedLeads: Lead[] = leads.map(lead => ({
         id: lead.id,
@@ -319,7 +324,9 @@ export class LeadModel {
       `;
 
       const db = getDatabase();
-      const leads = db.prepare(query).all(...queryParams) as any[];
+      // Filter out undefined values
+      const allParams = queryParams.filter(p => p !== undefined);
+      const leads = db.prepare(query).all(...allParams) as any[];
 
       return leads.map(lead => ({
         id: lead.id,

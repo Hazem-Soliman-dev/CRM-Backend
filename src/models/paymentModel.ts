@@ -242,7 +242,10 @@ export class PaymentModel {
         ${whereClause}
       `;
       const db = getDatabase();
-      const countResult = db.prepare(countQuery).get(...queryParams) as any;
+      
+      // Filter out undefined values for count query
+      const countParams = queryParams.filter(p => p !== undefined);
+      const countResult = db.prepare(countQuery).get(...countParams) as any;
       const total = countResult.total;
 
       // Main query
@@ -264,7 +267,9 @@ export class PaymentModel {
         LIMIT ? OFFSET ?
       `;
 
-      const payments = db.prepare(query).all(...queryParams, limit, offset) as any[];
+      // Combine query params with limit and offset, filtering out undefined
+      const allParams = [...queryParams.filter(p => p !== undefined), limit, offset];
+      const payments = db.prepare(query).all(...allParams) as any[];
 
       const formattedPayments: Payment[] = payments.map(payment => ({
         id: payment.id,

@@ -196,15 +196,16 @@ export class OperationsTripModel {
         return [];
       }
 
-      const tripIds = tripRows.map(row => row.id);
+      const tripIds = tripRows.map(row => row.id).filter(id => id !== undefined && id !== null);
       let serviceRows: any[] = [];
       
       if (tripIds.length > 0) {
         try {
+          const placeholders = tripIds.map(() => '?').join(',');
           const serviceQuery = `
             SELECT *
             FROM operations_optional_services
-            WHERE trip_id IN (${tripIds.map(() => '?').join(',')})
+            WHERE trip_id IN (${placeholders})
             ORDER BY added_date DESC, created_at DESC
           `;
           serviceRows = db.prepare(serviceQuery).all(...tripIds) as any[];

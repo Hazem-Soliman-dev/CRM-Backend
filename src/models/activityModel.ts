@@ -229,7 +229,10 @@ export class ActivityModel {
         FROM activities a
         ${whereClause}
       `;
-      const countResult = db.prepare(countQuery).get(...queryParams) as any;
+      
+      // Filter out undefined values for count query
+      const countParams = queryParams.filter(p => p !== undefined);
+      const countResult = db.prepare(countQuery).get(...countParams) as any;
       const total = countResult?.total || 0;
 
       // Main query
@@ -246,7 +249,9 @@ export class ActivityModel {
         LIMIT ? OFFSET ?
       `;
 
-      const activities = db.prepare(query).all(...queryParams, limit, offset).map((row: any) => this.formatActivity(row));
+      // Combine query params with limit and offset, filtering out undefined
+      const allParams = [...queryParams.filter(p => p !== undefined), limit, offset];
+      const activities = db.prepare(query).all(...allParams).map((row: any) => this.formatActivity(row));
 
       return { activities, total };
     } catch (error) {

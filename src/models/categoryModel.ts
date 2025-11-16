@@ -120,7 +120,10 @@ export class CategoryModel {
         ${whereClause}
       `;
       const db = getDatabase();
-      const countResult = db.prepare(countQuery).get(...queryParams) as any;
+      
+      // Filter out undefined values for count query
+      const countParams = queryParams.filter(p => p !== undefined);
+      const countResult = db.prepare(countQuery).get(...countParams) as any;
       const total = countResult.total;
 
       // Main query
@@ -137,7 +140,9 @@ export class CategoryModel {
         LIMIT ? OFFSET ?
       `;
 
-      const categories = db.prepare(query).all(...queryParams, limit, offset) as any[];
+      // Combine query params with limit and offset, filtering out undefined
+      const allParams = [...queryParams.filter(p => p !== undefined), limit, offset];
+      const categories = db.prepare(query).all(...allParams) as any[];
 
       const formattedCategories: Category[] = categories.map(category => ({
         id: category.id.toString(),

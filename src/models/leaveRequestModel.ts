@@ -163,7 +163,10 @@ export class LeaveRequestModel {
         FROM leave_requests lr
         ${whereClause}
       `;
-      const countResult = db.prepare(countQuery).get(...queryParams) as any;
+      
+      // Filter out undefined values for count query
+      const countParams = queryParams.filter(p => p !== undefined);
+      const countResult = db.prepare(countQuery).get(...countParams) as any;
       const total = countResult?.total || 0;
 
       // Get paginated records
@@ -184,7 +187,9 @@ export class LeaveRequestModel {
         LIMIT ? OFFSET ?
       `;
 
-      const requests = db.prepare(query).all(...queryParams, limit, offset).map((row: any) => this.formatLeaveRequest(row));
+      // Combine query params with limit and offset, filtering out undefined
+      const allParams = [...queryParams.filter(p => p !== undefined), limit, offset];
+      const requests = db.prepare(query).all(...allParams).map((row: any) => this.formatLeaveRequest(row));
 
       return { requests, total };
     } catch (error: any) {
