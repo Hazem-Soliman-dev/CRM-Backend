@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { body } from 'express-validator';
 import {
   markAttendance,
@@ -24,6 +25,26 @@ import { requireRead, requireCreate, requireUpdate } from '../middleware/permiss
 import { validate } from '../middleware/validate';
 
 const router = Router();
+
+// Allow employees (non-customers) to self-service clock in/out even without full create permission
+const allowEmployeeSelfService = (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const role = req.user?.role?.toLowerCase?.() || '';
+    // Auth middleware already required above; just gate customers
+    if (role && role !== 'customer') {
+      return next();
+    }
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied. Employees only.',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Permission check failed.',
+    });
+  }
+};
 
 // All routes require authentication
 router.use(authenticate);
@@ -74,10 +95,10 @@ router.get('/', requireRead('attendance'), getAttendanceRecords);
 router.post('/', requireCreate('attendance'), markAttendanceValidation, validate, markAttendance);
 
 // POST /api/v1/attendance/clock-in - Clock in for today
-router.post('/clock-in', requireCreate('attendance'), clockIn);
+router.post('/clock-in', allowEmployeeSelfService, clockIn);
 
 // POST /api/v1/attendance/clock-out - Clock out for today
-router.post('/clock-out', requireCreate('attendance'), clockOut);
+router.post('/clock-out', allowEmployeeSelfService, clockOut);
 
 // GET /api/v1/attendance/today - Get today's attendance for current user
 router.get('/today', requireRead('attendance'), getTodayAttendance);

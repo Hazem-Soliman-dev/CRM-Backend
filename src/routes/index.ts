@@ -21,6 +21,8 @@ import settingsRoutes from './settingsRoutes';
 import activityRoutes from './activityRoutes';
 import departmentRoutes from './departmentRoutes';
 import roleRoutes from './roleRoutes';
+import exportRoutes from './exportRoutes';
+import reportExportRoutes from './reportExportRoutes';
 
 const router = Router();
 
@@ -57,5 +59,7 @@ router.use('/settings', settingsRoutes);
 router.use('/activities', activityRoutes);
 router.use('/departments', departmentRoutes);
 router.use('/roles', roleRoutes);
+router.use('/export', exportRoutes);
+router.use('/reports', reportExportRoutes);
 
 export default router;

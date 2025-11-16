@@ -90,10 +90,12 @@ export class SupportTicketModel {
         ticketData.description,
         ticketData.priority || "Medium",
         ticketData.assigned_to || null,
-        createdBy,
+        createdBy
       );
 
-      const insertId = (db.prepare('SELECT last_insert_rowid() as id').get() as any).id;
+      const insertId = (
+        db.prepare("SELECT last_insert_rowid() as id").get() as any
+      ).id;
       return await this.findTicketById(insertId.toString());
     } catch (error) {
       throw new AppError("Failed to create support ticket", 500);
@@ -175,9 +177,10 @@ export class SupportTicketModel {
 
       // Role-based filtering
       if (userRole === "customer") {
-        whereConditions.push("t.customer_id = ?");
+        // Customers see tickets they created
+        whereConditions.push("t.created_by = ?");
         queryParams.push(userId);
-      } else if (userRole === "agent") {
+      } else if (userRole === "sales") {
         whereConditions.push("(t.assigned_to = ? OR t.created_by = ?)");
         queryParams.push(userId, userId);
       }
@@ -251,7 +254,9 @@ export class SupportTicketModel {
         LIMIT ? OFFSET ?
       `;
 
-      const tickets = db.prepare(query).all(...queryParams, limit, offset) as any[];
+      const tickets = db
+        .prepare(query)
+        .all(...queryParams, limit, offset) as any[];
 
       const formattedTickets: SupportTicket[] = tickets.map((ticket) => ({
         id: ticket.id.toString(),

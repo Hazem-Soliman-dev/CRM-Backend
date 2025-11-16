@@ -50,6 +50,146 @@ export const initializeSchema = async (): Promise<void> => {
       schemaInitialized = true;
       console.log("ℹ️  Database schema already exists");
 
+      // Lightweight migration: expand users.role and role_permissions.role enum values if old constraint is present
+      try {
+        const usersSchema = database
+          .prepare(
+            `SELECT sql FROM sqlite_master WHERE type='table' AND name='users'`
+          )
+          .get() as any;
+        const rolePermSchema = database
+          .prepare(
+            `SELECT sql FROM sqlite_master WHERE type='table' AND name='role_permissions'`
+          )
+          .get() as any;
+
+        const oldUsersCheck =
+          usersSchema?.sql &&
+          usersSchema.sql.includes(
+            "role IN ('admin', 'manager', 'agent', 'customer')"
+          );
+        const oldRolePermCheck =
+          rolePermSchema?.sql &&
+          rolePermSchema.sql.includes(
+            "role IN ('admin', 'manager', 'agent', 'customer')"
+          );
+
+        if (oldUsersCheck) {
+          console.log("🛠  Migrating users.role constraint to new roles...");
+          database.prepare("BEGIN").run();
+          try {
+            database
+              .prepare(
+                `
+              CREATE TABLE users_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                full_name TEXT NOT NULL,
+                phone TEXT,
+                role TEXT CHECK(role IN ('admin','customer','sales','reservation','finance','operations')) NOT NULL DEFAULT 'customer',
+                department TEXT,
+                avatar_url TEXT,
+                status TEXT CHECK(status IN ('active', 'inactive')) DEFAULT 'active',
+                last_login TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+              )
+            `
+              )
+              .run();
+            // Move data; map old roles to new roles
+            database
+              .prepare(
+                `
+              INSERT INTO users_new (
+                id, email, password, full_name, phone, role, department, avatar_url, status, last_login, created_at, updated_at
+              )
+              SELECT
+                id, email, password, full_name, phone,
+                CASE 
+                  WHEN role='manager' THEN 'admin'
+                  WHEN role='agent' THEN 'sales'
+                  ELSE role
+                END as role,
+                department, avatar_url, status, last_login, created_at, updated_at
+              FROM users
+            `
+              )
+              .run();
+            database.prepare(`DROP TABLE users`).run();
+            database.prepare(`ALTER TABLE users_new RENAME TO users`).run();
+            database.prepare("COMMIT").run();
+            console.log("✅ users table migrated");
+          } catch (e) {
+            database.prepare("ROLLBACK").run();
+            console.error(
+              "❌ Failed migrating users table:",
+              (e as any)?.message
+            );
+          }
+        }
+
+        if (oldRolePermCheck) {
+          console.log(
+            "🛠  Migrating role_permissions.role constraint to new roles..."
+          );
+          database.prepare("BEGIN").run();
+          try {
+            database
+              .prepare(
+                `
+              CREATE TABLE role_permissions_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                role TEXT CHECK(role IN ('admin','customer','sales','reservation','finance','operations')) NOT NULL,
+                permission_id INTEGER NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE,
+                UNIQUE (role, permission_id)
+              )
+            `
+              )
+              .run();
+            // Map old roles to new roles
+            database
+              .prepare(
+                `
+              INSERT OR IGNORE INTO role_permissions_new (id, role, permission_id, created_at)
+              SELECT id,
+                CASE 
+                  WHEN role='manager' THEN 'admin'
+                  WHEN role='agent' THEN 'sales'
+                  ELSE role
+                END as role,
+                permission_id,
+                created_at
+              FROM role_permissions
+            `
+              )
+              .run();
+            database.prepare(`DROP TABLE role_permissions`).run();
+            database
+              .prepare(
+                `ALTER TABLE role_permissions_new RENAME TO role_permissions`
+              )
+              .run();
+            database.prepare("COMMIT").run();
+            console.log("✅ role_permissions table migrated");
+          } catch (e) {
+            database.prepare("ROLLBACK").run();
+            console.error(
+              "❌ Failed migrating role_permissions table:",
+              (e as any)?.message
+            );
+          }
+        }
+      } catch (e) {
+        console.warn(
+          "⚠️  Role constraint migration check failed:",
+          (e as any)?.message
+        );
+      }
+
       // Check if admin user exists
       const adminExists = database
         .prepare("SELECT COUNT(*) as count FROM users WHERE email = ?")
@@ -81,6 +221,49 @@ export const initializeSchema = async (): Promise<void> => {
         console.log("✅ Default admin user created");
         console.log("   Email: admin@example.com");
         console.log("   Password: password");
+      }
+
+      // Ensure module permissions exist and are assigned to roles even on existing DBs
+      try {
+        const ensurePermission = database.prepare(`
+          INSERT OR IGNORE INTO permissions (name, module, action, description)
+          VALUES (?, ?, ?, ?)
+        `);
+        const getPermissionId = database.prepare(`
+          SELECT id FROM permissions WHERE module = ? AND action = ?
+        `);
+        const insertRolePerm = database.prepare(`
+          INSERT OR IGNORE INTO role_permissions (role, permission_id)
+          VALUES (?, ?)
+        `);
+
+        const ensureModuleCrud = (module: string, role: string) => {
+          const actions = ["read", "create", "update", "delete"];
+          for (const action of actions) {
+            const pretty = module.charAt(0).toUpperCase() + module.slice(1);
+            const name = `${
+              action.charAt(0).toUpperCase() + action.slice(1)
+            } ${pretty}`;
+            const description = `Permission to ${action} ${module}`;
+            ensurePermission.run(name, module, action, description);
+            const permRow = getPermissionId.get(module, action) as any;
+            if (permRow?.id) {
+              insertRolePerm.run(role, permRow.id);
+            }
+          }
+        };
+
+        ensureModuleCrud("sales", "sales");
+        ensureModuleCrud("reservations", "reservation");
+        ensureModuleCrud("accounting", "finance");
+        console.log(
+          "✅ Verified CRUD permissions for sales/reservations/accounting and assigned to roles"
+        );
+      } catch (e) {
+        console.warn(
+          "⚠️  Could not verify module permissions on existing DB:",
+          (e as any)?.message
+        );
       }
 
       return;
@@ -202,7 +385,9 @@ export const initializeSchema = async (): Promise<void> => {
         "categories",
         "items",
         "suppliers",
+        "sales", // Ensure 'sales' module exists for permission checks
         "sales-cases",
+        "accounting", // Ensure accounting module exists for permission checks
         "departments",
         "roles",
         "activities",
@@ -268,6 +453,49 @@ export const initializeSchema = async (): Promise<void> => {
       }
 
       console.log("✅ Permissions seeded successfully");
+    }
+
+    // Ensure module permissions exist and assign to roles (idempotent)
+    try {
+      const ensurePermission = database.prepare(`
+        INSERT OR IGNORE INTO permissions (name, module, action, description)
+        VALUES (?, ?, ?, ?)
+      `);
+      const getPermissionId = database.prepare(`
+        SELECT id FROM permissions WHERE module = ? AND action = ?
+      `);
+      const insertRolePerm = database.prepare(`
+        INSERT OR IGNORE INTO role_permissions (role, permission_id)
+        VALUES (?, ?)
+      `);
+
+      const ensureModuleCrud = (module: string, role: string) => {
+        const actions = ["read", "create", "update", "delete"];
+        for (const action of actions) {
+          const pretty = module.charAt(0).toUpperCase() + module.slice(1);
+          const name = `${
+            action.charAt(0).toUpperCase() + action.slice(1)
+          } ${pretty}`;
+          const description = `Permission to ${action} ${module}`;
+          ensurePermission.run(name, module, action, description);
+          const permRow = getPermissionId.get(module, action) as any;
+          if (permRow?.id) {
+            insertRolePerm.run(role, permRow.id);
+          }
+        }
+      };
+
+      ensureModuleCrud("sales", "sales");
+      ensureModuleCrud("reservations", "reservation");
+      ensureModuleCrud("accounting", "finance");
+      console.log(
+        "✅ Ensured CRUD permissions for sales/reservations/accounting and assigned to roles"
+      );
+    } catch (e) {
+      console.warn(
+        "⚠️  Could not ensure module permissions:",
+        (e as any)?.message
+      );
     }
 
     schemaInitialized = true;
@@ -374,15 +602,24 @@ export const seedData = async (): Promise<void> => {
 
   try {
     const database = getDatabase();
+    const forceSeed = (process.env.FORCE_DEMO_SEED || "").trim() === "1";
 
     // Check if we already have test users (indicates data is seeded)
-    const testUserExists = database
-      .prepare("SELECT COUNT(*) as count FROM users WHERE email = ?")
-      .get("manager1@example.com") as any;
-    if (testUserExists.count > 0) {
-      dataSeeded = true;
-      console.log("ℹ️  Test data already exists");
-      return;
+    if (!forceSeed) {
+      const testUserExists = database
+        .prepare("SELECT COUNT(*) as count FROM users WHERE email = ?")
+        .get("manager1@example.com") as any;
+      if (testUserExists.count > 0) {
+        dataSeeded = true;
+        console.log(
+          "ℹ️  Test data already exists (set FORCE_DEMO_SEED=1 to reseed)"
+        );
+        return;
+      }
+    } else {
+      console.log(
+        "🛠  FORCE_DEMO_SEED=1 detected — reseeding demo data even if records exist"
+      );
     }
 
     console.log("🌱 Seeding test data...");
@@ -810,6 +1047,85 @@ export const seedData = async (): Promise<void> => {
       }
     }
 
+    // Add additional demo reservations if table is still sparse
+    try {
+      const existingReservationsCount = (
+        database
+          .prepare("SELECT COUNT(*) as count FROM reservations")
+          .get() as any
+      ).count;
+      if (existingReservationsCount < 5 && customerIds.length > 1) {
+        const extraTimestamp = Date.now().toString().slice(-6);
+        const extraReservations = [
+          {
+            reservation_id: `RES-${extraTimestamp}3`,
+            customer_id: customerIds[0],
+            supplier_id: supplierIds[2] || supplierIds[0],
+            service_type: "Car Rental",
+            destination: "Dubai, UAE",
+            departure_date: new Date(Date.now() + 10 * 86400000)
+              .toISOString()
+              .split("T")[0],
+            return_date: new Date(Date.now() + 12 * 86400000)
+              .toISOString()
+              .split("T")[0],
+            adults: 2,
+            children: 0,
+            infants: 0,
+            total_amount: 300.0,
+            status: "Pending",
+            payment_status: "Pending",
+            created_by: adminId,
+          },
+          {
+            reservation_id: `RES-${extraTimestamp}4`,
+            customer_id: customerIds[1],
+            supplier_id: supplierIds[1] || supplierIds[0],
+            service_type: "Tour",
+            destination: "Tokyo City Tour",
+            departure_date: new Date(Date.now() + 20 * 86400000)
+              .toISOString()
+              .split("T")[0],
+            return_date: null,
+            adults: 4,
+            children: 1,
+            infants: 0,
+            total_amount: 800.0,
+            status: "Confirmed",
+            payment_status: "Partial",
+            created_by: adminId,
+          },
+        ];
+        const insertReservationExtra = database.prepare(`
+          INSERT OR IGNORE INTO reservations (
+            reservation_id, customer_id, supplier_id, service_type, destination,
+            departure_date, return_date, adults, children, infants, total_amount,
+            status, payment_status, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const r of extraReservations) {
+          try {
+            insertReservationExtra.run(
+              r.reservation_id,
+              r.customer_id,
+              r.supplier_id,
+              r.service_type,
+              r.destination,
+              r.departure_date,
+              r.return_date,
+              r.adults,
+              r.children,
+              r.infants,
+              r.total_amount,
+              r.status,
+              r.payment_status,
+              r.created_by
+            );
+          } catch {}
+        }
+      }
+    } catch {}
+
     // Seed payments (only if we have reservations)
     if (customerIds.length > 0) {
       console.log("   Creating payments...");
@@ -870,6 +1186,66 @@ export const seedData = async (): Promise<void> => {
         }
       }
     }
+
+    // Add additional demo payments if table is sparse
+    try {
+      const paymentsCount = (
+        database.prepare("SELECT COUNT(*) as count FROM payments").get() as any
+      ).count;
+      if (paymentsCount < 4) {
+        const anyReservation = database
+          .prepare("SELECT id FROM reservations ORDER BY id DESC LIMIT 1")
+          .get() as any;
+        if (anyReservation && customerIds.length > 0) {
+          const payTs = Date.now().toString().slice(-7);
+          const extraPayments = [
+            {
+              payment_id: `PAY-${payTs}3`,
+              booking_id: anyReservation.id,
+              customer_id: customerIds[0],
+              amount: 200.0,
+              payment_method: "Cash",
+              payment_status: "Completed",
+              transaction_id: `TXN-${payTs}3`,
+              payment_date: new Date().toISOString().split("T")[0],
+              created_by: adminId,
+            },
+            {
+              payment_id: `PAY-${payTs}4`,
+              booking_id: anyReservation.id,
+              customer_id: customerIds[0],
+              amount: 150.0,
+              payment_method: "Check",
+              payment_status: "Pending",
+              transaction_id: `TXN-${payTs}4`,
+              payment_date: new Date().toISOString().split("T")[0],
+              created_by: adminId,
+            },
+          ];
+          const insertPaymentExtra = database.prepare(`
+            INSERT OR IGNORE INTO payments (
+              payment_id, booking_id, customer_id, amount, payment_method,
+              payment_status, transaction_id, payment_date, created_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+          for (const p of extraPayments) {
+            try {
+              insertPaymentExtra.run(
+                p.payment_id,
+                p.booking_id,
+                p.customer_id,
+                p.amount,
+                p.payment_method,
+                p.payment_status,
+                p.transaction_id,
+                p.payment_date,
+                p.created_by
+              );
+            } catch {}
+          }
+        }
+      }
+    } catch {}
 
     // Seed support ticket notes (only if we have tickets)
     const ticketIds = database
@@ -979,6 +1355,80 @@ export const seedData = async (): Promise<void> => {
         }
       }
     }
+
+    // Add additional demo sales cases if table is sparse
+    try {
+      const casesCount = (
+        database
+          .prepare("SELECT COUNT(*) as count FROM sales_cases")
+          .get() as any
+      ).count;
+      if (casesCount < 4 && customerIds.length > 1) {
+        const ts = Date.now().toString().slice(-7);
+        const moreCases = [
+          {
+            case_id: `SC-${ts}3`,
+            customer_id: customerIds[0],
+            lead_id: null,
+            title: "Weekend Getaway Package",
+            description: "City break for two with spa access",
+            status: "Open",
+            case_type: "B2C",
+            quotation_status: "Draft",
+            value: 1200.0,
+            probability: 40,
+            expected_close_date: new Date(Date.now() + 14 * 86400000)
+              .toISOString()
+              .split("T")[0],
+            assigned_to: null,
+            created_by: adminId,
+          },
+          {
+            case_id: `SC-${ts}4`,
+            customer_id: customerIds[1],
+            lead_id: null,
+            title: "Quarterly Corporate Retreat",
+            description: "Retreat planning for 35 staff",
+            status: "Open",
+            case_type: "B2B",
+            quotation_status: "Sent",
+            value: 32000.0,
+            probability: 55,
+            expected_close_date: new Date(Date.now() + 25 * 86400000)
+              .toISOString()
+              .split("T")[0],
+            assigned_to: null,
+            created_by: adminId,
+          },
+        ];
+        const insertCaseExtra = database.prepare(`
+          INSERT OR IGNORE INTO sales_cases (
+            case_id, customer_id, lead_id, title, description, status,
+            case_type, quotation_status, value, probability, expected_close_date,
+            assigned_to, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const c of moreCases) {
+          try {
+            insertCaseExtra.run(
+              c.case_id,
+              c.customer_id,
+              c.lead_id,
+              c.title,
+              c.description,
+              c.status,
+              c.case_type,
+              c.quotation_status,
+              c.value,
+              c.probability,
+              c.expected_close_date,
+              c.assigned_to,
+              c.created_by
+            );
+          } catch {}
+        }
+      }
+    } catch {}
 
     // Seed property owners
     console.log("   Creating property owners...");

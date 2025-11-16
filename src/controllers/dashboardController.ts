@@ -5,44 +5,192 @@ import getDatabase from "../config/database";
 
 // Get dashboard statistics
 export const getDashboardStats = asyncHandler(
-  async (_req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     try {
       const db = getDatabase();
-      
-      // Get basic counts
-      const usersResult = db.prepare("SELECT COUNT(*) as total FROM users WHERE role != 'customer'").get() as any;
-      const customersResult = db.prepare("SELECT COUNT(*) as total FROM customers").get() as any;
-      const leadsResult = db.prepare("SELECT COUNT(*) as total FROM leads").get() as any;
-      const reservationsResult = db.prepare("SELECT COUNT(*) as total FROM reservations").get() as any;
-      const paymentsResult = db.prepare("SELECT COUNT(*) as total FROM payments").get() as any;
-      const ticketsResult = db.prepare("SELECT COUNT(*) as total FROM support_tickets").get() as any;
+      const role = req.user?.role?.toLowerCase() || "";
+      const userId = req.user?.userId;
+
+      // Helper to apply role/user filters
+      const isAdmin = role === "admin";
+      // For admin, return global, unfiltered stats (preserve previous behavior)
+      if (isAdmin) {
+        const usersResult = db
+          .prepare(
+            "SELECT COUNT(*) as total FROM users WHERE role != 'customer'"
+          )
+          .get() as any;
+        const customersResult = db
+          .prepare("SELECT COUNT(*) as total FROM customers")
+          .get() as any;
+        const leadsResult = db
+          .prepare("SELECT COUNT(*) as total FROM leads")
+          .get() as any;
+        const reservationsResult = db
+          .prepare("SELECT COUNT(*) as total FROM reservations")
+          .get() as any;
+        const paymentsResult = db
+          .prepare("SELECT COUNT(*) as total FROM payments")
+          .get() as any;
+        const ticketsResult = db
+          .prepare("SELECT COUNT(*) as total FROM support_tickets")
+          .get() as any;
+        const revenueResult = db
+          .prepare(
+            "SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE payment_status = 'Completed'"
+          )
+          .get() as any;
+        const todayLeadsResult = db
+          .prepare(
+            `
+          SELECT COUNT(*) as total 
+          FROM leads 
+          WHERE date(created_at) = date('now')
+        `
+          )
+          .get() as any;
+        const recentLeads = db
+          .prepare(
+            `
+          SELECT l.*, u.full_name as agent_name 
+          FROM leads l 
+          LEFT JOIN users u ON l.agent_id = u.id 
+          ORDER BY l.created_at DESC 
+          LIMIT 5
+        `
+          )
+          .all() as any[];
+        const recentReservations = db
+          .prepare(
+            `
+          SELECT r.*, c.name as customer_name 
+          FROM reservations r 
+          LEFT JOIN customers c ON r.customer_id = c.id 
+          ORDER BY r.created_at DESC 
+          LIMIT 5
+        `
+          )
+          .all() as any[];
+        successResponse(res, {
+          overview: {
+            totalUsers: usersResult.total,
+            totalCustomers: customersResult.total,
+            totalLeads: leadsResult.total,
+            totalReservations: reservationsResult.total,
+            totalPayments: paymentsResult.total,
+            totalTickets: ticketsResult.total,
+            totalRevenue: revenueResult.total,
+            newLeadsToday: todayLeadsResult.total,
+          },
+          recentActivity: {
+            recentLeads,
+            recentReservations,
+          },
+        });
+        return;
+      }
+      const whereByRole = (table: string): string => {
+        if (isAdmin) return "";
+        switch (role) {
+          case "sales":
+            if (table === "leads") return " WHERE agent_id = ?";
+            if (table === "customers") return " WHERE assigned_staff_id = ?";
+            if (table === "reservations") return " WHERE created_by = ?";
+            if (table === "payments") return " WHERE created_by = ?";
+            return "";
+          case "reservation":
+            if (table === "reservations") return " WHERE created_by = ?";
+            return "";
+          case "finance":
+            // Finance sees global finance data
+            return "";
+          case "operations":
+            // counts for operations rely more on tasks; keep global for entities
+            return "";
+          case "customer":
+            // best effort: reservations created_by as proxy for customer's own actions
+            if (table === "reservations") return " WHERE created_by = ?";
+            if (table === "payments") return " WHERE created_by = ?";
+            return "";
+          default:
+            return "";
+        }
+      };
+
+      // Get basic counts with role scoping
+      const usersResult = db
+        .prepare("SELECT COUNT(*) as total FROM users WHERE role != 'customer'")
+        .get() as any;
+      const customersResult = db
+        .prepare(
+          "SELECT COUNT(*) as total FROM customers" + whereByRole("customers")
+        )
+        .get(!isAdmin && whereByRole("customers") ? userId : undefined) as any;
+      const leadsResult = db
+        .prepare("SELECT COUNT(*) as total FROM leads" + whereByRole("leads"))
+        .get(!isAdmin && whereByRole("leads") ? userId : undefined) as any;
+      const reservationsResult = db
+        .prepare(
+          "SELECT COUNT(*) as total FROM reservations" +
+            whereByRole("reservations")
+        )
+        .get(
+          !isAdmin && whereByRole("reservations") ? userId : undefined
+        ) as any;
+      const paymentsResult = db
+        .prepare(
+          "SELECT COUNT(*) as total FROM payments" + whereByRole("payments")
+        )
+        .get(!isAdmin && whereByRole("payments") ? userId : undefined) as any;
+      const ticketsResult = db
+        .prepare("SELECT COUNT(*) as total FROM support_tickets")
+        .get() as any;
 
       // Get revenue data
-      const revenueResult = db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE payment_status = 'Completed'").get() as any;
+      const revenueResult = db
+        .prepare(
+          "SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE payment_status = 'Completed'" +
+            (isAdmin || role !== "sales" ? "" : " AND created_by = ?")
+        )
+        .get(!isAdmin && role === "sales" ? userId : undefined) as any;
 
       // Get today's leads count
-      const todayLeadsResult = db.prepare(`
+      const todayLeadsResult = db
+        .prepare(
+          `
       SELECT COUNT(*) as total 
       FROM leads 
-      WHERE date(created_at) = date('now')
-    `).get() as any;
+      WHERE date(created_at) = date('now') ${
+        !isAdmin && role === "sales" ? " AND agent_id = ?" : ""
+      }
+    `
+        )
+        .get(!isAdmin && role === "sales" ? userId : undefined) as any;
 
       // Get recent activity
-      const recentLeads = db.prepare(`
+      const recentLeads = db
+        .prepare(
+          `
       SELECT l.*, u.full_name as agent_name 
       FROM leads l 
       LEFT JOIN users u ON l.agent_id = u.id 
       ORDER BY l.created_at DESC 
       LIMIT 5
-    `).all() as any[];
+    `
+        )
+        .all() as any[];
 
-      const recentReservations = db.prepare(`
+      const recentReservations = db
+        .prepare(
+          `
       SELECT r.*, c.name as customer_name 
       FROM reservations r 
       LEFT JOIN customers c ON r.customer_id = c.id 
       ORDER BY r.created_at DESC 
       LIMIT 5
-    `).all() as any[];
+    `
+        )
+        .all() as any[];
 
       const stats = {
         overview: {
@@ -69,6 +217,159 @@ export const getDashboardStats = asyncHandler(
   }
 );
 
+// Today Tasks - role/user scoped
+export const getTodayTasks = asyncHandler(
+  async (req: Request, res: Response) => {
+    const db = getDatabase();
+    const role = req.user?.role?.toLowerCase() || "";
+    const userId = req.user?.userId;
+
+    // Today boundaries
+    const todayISO = new Date().toISOString().split("T")[0];
+
+    const tasks: any[] = [];
+
+    const pushRows = (
+      rows: any[],
+      type: string,
+      titleFn: (r: any) => string,
+      dueField: string
+    ) => {
+      for (const r of rows) {
+        tasks.push({
+          id: `${type}-${r.id}`,
+          type,
+          title: titleFn(r),
+          due: r[dueField] || todayISO,
+        });
+      }
+    };
+
+    // Sales
+    if (role === "admin" || role === "sales") {
+      const leadsDue = db
+        .prepare(
+          `
+        SELECT id, lead_id as code, name, next_followup 
+        FROM leads 
+        WHERE date(next_followup) = date('now') ${
+          role === "sales" ? "AND agent_id = ?" : ""
+        }
+      `
+        )
+        .all(role === "sales" ? userId : undefined) as any[];
+      pushRows(
+        leadsDue,
+        "lead_followup",
+        (r) => `Follow up: ${r.name || r.code}`,
+        "next_followup"
+      );
+    }
+
+    // Reservation
+    if (role === "admin" || role === "reservation") {
+      const bookingsToday = db
+        .prepare(
+          `
+        SELECT id, reservation_id as code, destination, departure_date 
+        FROM reservations 
+        WHERE date(departure_date) = date('now') ${
+          role === "reservation" ? "AND created_by = ?" : ""
+        }
+      `
+        )
+        .all(role === "reservation" ? userId : undefined) as any[];
+      pushRows(
+        bookingsToday,
+        "reservation_departure",
+        (r) => `Departure: ${r.code} → ${r.destination}`,
+        "departure_date"
+      );
+    }
+
+    // Finance
+    if (role === "admin" || role === "finance") {
+      const paymentsDue = db
+        .prepare(
+          `
+        SELECT id, payment_id as code, amount, due_date 
+        FROM payments 
+        WHERE date(due_date) = date('now') AND payment_status IN ('Pending','Partially Refunded')
+      `
+        )
+        .all() as any[];
+      pushRows(
+        paymentsDue,
+        "payment_due",
+        (r) => `Payment due: ${r.code} ($${r.amount})`,
+        "due_date"
+      );
+    }
+
+    // Operations
+    if (role === "admin" || role === "operations") {
+      const opsTasks = db
+        .prepare(
+          `
+        SELECT id, task_id as code, title, scheduled_at 
+        FROM operations_tasks 
+        WHERE date(scheduled_at) = date('now') ${
+          role === "operations" ? "AND assigned_to = ?" : ""
+        }
+      `
+        )
+        .all(role === "operations" ? userId : undefined) as any[];
+      pushRows(
+        opsTasks,
+        "operations_task",
+        (r) => `Task: ${r.title}`,
+        "scheduled_at"
+      );
+    }
+
+    // Customer - show their reservations today (best-effort: created_by)
+    if (role === "customer") {
+      const myTrips = db
+        .prepare(
+          `
+        SELECT id, reservation_id as code, destination, departure_date 
+        FROM reservations 
+        WHERE date(departure_date) = date('now') AND created_by = ?
+      `
+        )
+        .all(userId) as any[];
+      pushRows(
+        myTrips,
+        "my_trip",
+        (r) => `Your trip: ${r.destination}`,
+        "departure_date"
+      );
+    }
+
+    // Checklist suggestions by role
+    const checklistMap: Record<string, any[]> = {
+      sales: [
+        { id: "daily-sync", label: "Daily pipeline review" },
+        { id: "follow-ups", label: "Call top 5 leads" },
+      ],
+      reservation: [
+        {
+          id: "confirm-suppliers",
+          label: "Confirm suppliers for today's trips",
+        },
+      ],
+      finance: [{ id: "reconcile", label: "Reconcile yesterday payments" }],
+      operations: [{ id: "brief-team", label: "Brief field team for trips" }],
+      customer: [{ id: "check-itinerary", label: "Review your itinerary" }],
+      admin: [{ id: "review-metrics", label: "Review global KPIs" }],
+    };
+
+    successResponse(res, {
+      tasks,
+      checklist: checklistMap[role] || [],
+    });
+  }
+);
 // Get revenue trend - format for chart
 export const getRevenueTrend = asyncHandler(
   async (req: Request, res: Response) => {
@@ -265,7 +566,9 @@ export const getRecentActivity = asyncHandler(
       try {
         // Try to get from activities table first
         const db = getDatabase();
-        const activityRows = db.prepare(`
+        const activityRows = db
+          .prepare(
+            `
         SELECT 
           a.*,
           u.full_name as user_name
@@ -273,7 +576,9 @@ export const getRecentActivity = asyncHandler(
         LEFT JOIN users u ON a.performed_by_id = u.id
         ORDER BY a.created_at DESC
         LIMIT ?
-      `).all(limitNum) as any[];
+      `
+          )
+          .all(limitNum) as any[];
 
         activities = activityRows.map((row: any) => ({
           id: row.id,
@@ -287,7 +592,9 @@ export const getRecentActivity = asyncHandler(
       } catch (error) {
         // Fallback to combining leads and reservations
         const db = getDatabase();
-        const recentLeads = db.prepare(`
+        const recentLeads = db
+          .prepare(
+            `
         SELECT 
           'lead' as type,
           l.id,
@@ -298,9 +605,13 @@ export const getRecentActivity = asyncHandler(
         LEFT JOIN users u ON l.agent_id = u.id
         ORDER BY l.created_at DESC
         LIMIT ?
-      `).all(Math.ceil(limitNum / 2)) as any[];
+      `
+          )
+          .all(Math.ceil(limitNum / 2)) as any[];
 
-        const recentReservations = db.prepare(`
+        const recentReservations = db
+          .prepare(
+            `
         SELECT 
           'reservation' as type,
           r.id,
@@ -311,7 +622,9 @@ export const getRecentActivity = asyncHandler(
         LEFT JOIN customers c ON r.customer_id = c.id
         ORDER BY r.created_at DESC
         LIMIT ?
-      `).all(Math.ceil(limitNum / 2)) as any[];
+      `
+          )
+          .all(Math.ceil(limitNum / 2)) as any[];
 
         // Combine and format
         activities = [
@@ -359,19 +672,29 @@ export const getPerformanceMetrics = asyncHandler(
       let metrics: any = {};
 
       const db = getDatabase();
-      
+
       if (userRole === "agent") {
         // Agent-specific metrics
-        const leadsCount = db.prepare("SELECT COUNT(*) as count FROM leads WHERE agent_id = ?").get(userId) as any;
+        const leadsCount = db
+          .prepare("SELECT COUNT(*) as count FROM leads WHERE agent_id = ?")
+          .get(userId) as any;
 
-        const leadsValue = db.prepare("SELECT COALESCE(SUM(value), 0) as total FROM leads WHERE agent_id = ?").get(userId) as any;
+        const leadsValue = db
+          .prepare(
+            "SELECT COALESCE(SUM(value), 0) as total FROM leads WHERE agent_id = ?"
+          )
+          .get(userId) as any;
 
-        const conversionRate = db.prepare(`
+        const conversionRate = db
+          .prepare(
+            `
         SELECT 
           (COUNT(CASE WHEN status = 'Closed Won' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0)) as rate
         FROM leads 
         WHERE agent_id = ?
-      `).get(userId) as any;
+      `
+          )
+          .get(userId) as any;
 
         metrics = {
           totalLeads: leadsCount.count,
@@ -380,7 +703,9 @@ export const getPerformanceMetrics = asyncHandler(
         };
       } else if (userRole === "manager" || userRole === "admin") {
         // Manager/Admin metrics
-        const teamPerformance = db.prepare(`
+        const teamPerformance = db
+          .prepare(
+            `
         SELECT 
           u.full_name,
           COUNT(l.id) as leads_count,
@@ -388,10 +713,12 @@ export const getPerformanceMetrics = asyncHandler(
           (COUNT(CASE WHEN l.status = 'Closed Won' THEN 1 END) * 100.0 / NULLIF(COUNT(l.id), 0)) as conversion_rate
         FROM users u
         LEFT JOIN leads l ON u.id = l.agent_id
-        WHERE u.role = 'agent'
+        WHERE u.role = 'sales'
         GROUP BY u.id, u.full_name
         ORDER BY total_value DESC
-      `).all() as any[];
+      `
+          )
+          .all() as any[];
 
         metrics = {
           teamPerformance: teamPerformance,

@@ -7,7 +7,7 @@ export interface User {
   email: string;
   full_name: string;
   phone?: string;
-  role: 'admin' | 'manager' | 'agent' | 'customer';
+  role: 'admin' | 'customer' | 'sales' | 'reservation' | 'finance' | 'operations';
   department?: string;
   avatar_url?: string;
   status: 'active' | 'inactive';
@@ -21,7 +21,7 @@ export interface CreateUserData {
   password: string;
   full_name: string;
   phone?: string;
-  role: 'admin' | 'manager' | 'agent' | 'customer';
+  role: 'admin' | 'customer' | 'sales' | 'reservation' | 'finance' | 'operations';
   department?: string;
   avatar_url?: string;
 }
@@ -29,7 +29,7 @@ export interface CreateUserData {
 export interface UpdateUserData {
   full_name?: string;
   phone?: string;
-  role?: 'admin' | 'manager' | 'agent' | 'customer';
+  role?: 'admin' | 'customer' | 'sales' | 'reservation' | 'finance' | 'operations';
   department?: string;
   avatar_url?: string;
   status?: 'active' | 'inactive';

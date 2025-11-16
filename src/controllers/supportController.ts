@@ -136,7 +136,7 @@ export const getMyTickets = asyncHandler(async (req: Request, res: Response) => 
   // Add role-based filtering
   if (req.user!.role === 'customer') {
     filters.customer_id = req.user!.userId;
-  } else if (req.user!.role === 'agent') {
+  } else if (req.user!.role === 'sales') {
     filters.assigned_to = req.user!.userId;
   }
 

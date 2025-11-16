@@ -79,8 +79,9 @@ export const createLead = asyncHandler(async (req: Request, res: Response) => {
     throw new ValidationError('Invalid type. Must be B2B or B2C');
   }
 
-  // If no agent_id provided, assign to current user if they are an agent/sales
-  const assignedAgentId = agent_id || (req.user!.role === 'agent' || req.user!.role === 'sales' ? req.user!.userId : undefined);
+  // If no agent_id provided, assign to current user if they are sales
+  const assignedAgentId =
+    agent_id || (req.user!.role === 'sales' ? req.user!.userId : undefined);
 
   const lead = await LeadModel.createLead({
     name,

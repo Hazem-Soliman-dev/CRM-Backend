@@ -8,7 +8,8 @@ import { errorHandler } from "./middleware/errorHandler";
 import { rateLimiter } from "./middleware/rateLimiter";
 import { ensureSchema } from "./middleware/ensureSchema";
 import routes from "./routes";
-import { testConnection, initializeDatabase } from "./config/database";
+import { testConnection, initializeDatabase, seedData } from "./config/database";
+import { seedDemoUsers } from "./seed/demoUsers";
 
 // Load environment variables
 dotenv.config();
@@ -126,6 +127,10 @@ const startServer = async () => {
     // Initialize schema and seed data before starting server
     const { initializeSchema } = await import("./config/database");
     await initializeSchema();
+    // Seed core demo data if empty
+    await seedData();
+    // Seed demo users after schema init
+    await seedDemoUsers();
 
     // Test database connection
     const dbConnected = await testConnection();

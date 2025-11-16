@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     password TEXT NOT NULL,
     full_name TEXT NOT NULL,
     phone TEXT,
-    role TEXT CHECK(role IN ('admin', 'manager', 'agent', 'customer')) NOT NULL DEFAULT 'customer',
+    role TEXT CHECK(role IN ('admin','customer','sales','reservation','finance','operations')) NOT NULL DEFAULT 'customer',
     department TEXT,
     avatar_url TEXT,
     status TEXT CHECK(status IN ('active', 'inactive')) DEFAULT 'active',
@@ -456,7 +456,7 @@ CREATE TABLE IF NOT EXISTS permissions (
 -- Role permissions table
 CREATE TABLE IF NOT EXISTS role_permissions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    role TEXT CHECK(role IN ('admin', 'manager', 'agent', 'customer')) NOT NULL,
+    role TEXT CHECK(role IN ('admin','customer','sales','reservation','finance','operations')) NOT NULL,
     permission_id INTEGER NOT NULL,
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE,
