@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { body } from 'express-validator';
 import { register, login, getMe, refreshToken, logout, forgotPassword, resetPassword } from '../controllers/authController';
 import { authenticate } from '../middleware/auth';
-import { authRateLimiter } from '../middleware/rateLimiter';
 import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
@@ -32,8 +31,8 @@ const resetPasswordValidation = [
 ];
 
 // Routes
-router.post('/register', authRateLimiter, registerValidation, asyncHandler(register));
-router.post('/login', authRateLimiter, loginValidation, asyncHandler(login));
+router.post('/register', registerValidation, asyncHandler(register));
+router.post('/login', loginValidation, asyncHandler(login));
 router.get('/me', authenticate, asyncHandler(getMe));
 router.post('/refresh', asyncHandler(refreshToken));
 router.post('/logout', authenticate, asyncHandler(logout));

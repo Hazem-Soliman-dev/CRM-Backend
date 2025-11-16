@@ -5,10 +5,13 @@ import morgan from "morgan";
 import compression from "compression";
 import dotenv from "dotenv";
 import { errorHandler } from "./middleware/errorHandler";
-import { rateLimiter } from "./middleware/rateLimiter";
 import { ensureSchema } from "./middleware/ensureSchema";
 import routes from "./routes";
-import { testConnection, initializeDatabase, seedData } from "./config/database";
+import {
+  testConnection,
+  initializeDatabase,
+  seedData,
+} from "./config/database";
 import { seedDemoUsers } from "./seed/demoUsers";
 
 // Load environment variables
@@ -77,9 +80,6 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
-
-// Rate limiting
-app.use(rateLimiter);
 
 // Body parsing middleware
 app.use(express.json({ limit: "10mb" }));

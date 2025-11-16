@@ -592,27 +592,35 @@ export const closeDatabase = (): void => {
   }
 };
 
-// Seed essential data (users, departments, customers, leads, etc.)
-let dataSeeded = false;
-
 export const seedData = async (): Promise<void> => {
-  if (dataSeeded) {
-    return;
-  }
-
   try {
     const database = getDatabase();
     const forceSeed = (process.env.FORCE_DEMO_SEED || "").trim() === "1";
 
-    // Check if we already have test users (indicates data is seeded)
+    // If not forcing reseed, short-circuit when core business data already exists.
+    // This makes seedData safe to call on each request or cold start in any env.
     if (!forceSeed) {
-      const testUserExists = database
-        .prepare("SELECT COUNT(*) as count FROM users WHERE email = ?")
-        .get("manager1@example.com") as any;
-      if (testUserExists.count > 0) {
-        dataSeeded = true;
+      const existingCounts = database
+        .prepare(
+          `
+          SELECT
+            (SELECT COUNT(*) FROM customers)      AS customers,
+            (SELECT COUNT(*) FROM reservations)   AS reservations,
+            (SELECT COUNT(*) FROM leads)          AS leads,
+            (SELECT COUNT(*) FROM sales_cases)    AS sales_cases
+        `
+        )
+        .get() as any;
+
+      if (
+        existingCounts &&
+        (existingCounts.customers > 0 ||
+          existingCounts.reservations > 0 ||
+          existingCounts.leads > 0 ||
+          existingCounts.sales_cases > 0)
+      ) {
         console.log(
-          "ℹ️  Test data already exists (set FORCE_DEMO_SEED=1 to reseed)"
+          "ℹ️  Demo data already present (set FORCE_DEMO_SEED=1 to reseed)"
         );
         return;
       }
@@ -2136,7 +2144,6 @@ export const seedData = async (): Promise<void> => {
       }
     }
 
-    dataSeeded = true;
     console.log("✅ Test data seeded successfully");
     console.log("🔑 Test user credentials:");
     console.log("   - manager1@example.com / password");
