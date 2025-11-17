@@ -9,14 +9,26 @@ import { body, param, validationResult } from 'express-validator';
 export const validateCreateCategory = [
   body('name').notEmpty().withMessage('Category name is required'),
   body('description').optional().isString(),
-  body('parent_id').optional().isInt().withMessage('Parent ID must be a valid integer')
+  body('parent_id')
+    .optional({ checkFalsy: true })
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) return true;
+      return !isNaN(Number(value)) && Number.isInteger(Number(value));
+    })
+    .withMessage('Parent ID must be a valid integer')
 ];
 
 export const validateUpdateCategory = [
   param('id').isInt().withMessage('Invalid category ID'),
   body('name').optional().notEmpty().withMessage('Category name cannot be empty'),
   body('description').optional().isString(),
-  body('parent_id').optional().isInt().withMessage('Parent ID must be a valid integer')
+  body('parent_id')
+    .optional({ checkFalsy: true })
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) return true;
+      return !isNaN(Number(value)) && Number.isInteger(Number(value));
+    })
+    .withMessage('Parent ID must be a valid integer')
 ];
 
 export const validateCategoryId = [
@@ -93,8 +105,8 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
 
   const categoryData: CreateCategoryData = {
     name: req.body.name,
-    description: req.body.description,
-    parent_id: req.body.parent_id
+    description: req.body.description || undefined,
+    parent_id: req.body.parent_id && req.body.parent_id !== '' ? req.body.parent_id : undefined
   };
 
   const category = await CategoryModel.createCategory(categoryData);
@@ -116,8 +128,8 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
 
   const updateData: UpdateCategoryData = {
     name: req.body.name,
-    description: req.body.description,
-    parent_id: req.body.parent_id
+    description: req.body.description || undefined,
+    parent_id: req.body.parent_id && req.body.parent_id !== '' ? req.body.parent_id : undefined
   };
 
   const category = await CategoryModel.updateCategory(req.params.id, updateData);

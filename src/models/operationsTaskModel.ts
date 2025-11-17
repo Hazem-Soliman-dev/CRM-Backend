@@ -234,13 +234,16 @@ export class OperationsTaskModel {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
+      // Ensure scheduledAt is a string or null (SQLite TEXT field accepts ISO8601 strings)
+      const scheduledAtValue = data.scheduledAt && data.scheduledAt.trim() ? data.scheduledAt : null;
+
       db.prepare(query).run(
         taskId,
         data.tripId || null,
         data.title,
         data.tripReference || null,
         data.customerName || null,
-        data.scheduledAt ? new Date(data.scheduledAt) : null,
+        scheduledAtValue,
         data.location || null,
         data.assignedTo || null,
         data.status || 'Pending',
@@ -278,8 +281,10 @@ export class OperationsTaskModel {
         params.push(data.customerName || null);
       }
       if (data.scheduledAt !== undefined) {
+        // Ensure scheduledAt is a string or null (SQLite TEXT field accepts ISO8601 strings)
+        const scheduledAtValue = data.scheduledAt && data.scheduledAt.trim() ? data.scheduledAt : null;
         fields.push('scheduled_at = ?');
-        params.push(data.scheduledAt ? new Date(data.scheduledAt) : null);
+        params.push(scheduledAtValue);
       }
       if (data.location !== undefined) {
         fields.push('location = ?');
@@ -321,11 +326,15 @@ export class OperationsTaskModel {
 
       db.prepare(query).run(...params);
       return await this.findTaskById(id);
-    } catch (error) {
+    } catch (error: any) {
+      // Log the actual error for debugging
+      console.error('Error updating task:', error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to update task', 500);
+      // Provide more detailed error message
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      throw new AppError(`Failed to update task: ${errorMessage}`, 500);
     }
   }
 

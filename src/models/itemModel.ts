@@ -193,7 +193,7 @@ export class ItemModel {
 
       // Main query
       const page = filters.page || 1;
-      const limit = filters.limit || 10;
+      const limit = filters.limit || 1000; // Increased default to return all items
       const offset = (page - 1) * limit;
 
       const query = `

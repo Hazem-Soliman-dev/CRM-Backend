@@ -50,11 +50,6 @@ export const validateAssignSalesCase = [
 
 // Get all sales cases
 export const getAllSalesCases = asyncHandler(async (req: Request, res: Response) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    throw new ValidationError(errors.array().map((error: any) => error.msg).join(', '));
-  }
-
   const filters: SalesCaseFilters = {
     status: req.query.status as string,
     assigned_to: req.query.assigned_to as string,
@@ -123,38 +118,39 @@ export const updateSalesCase = asyncHandler(async (req: Request, res: Response) 
   // Only include fields that are actually provided (not undefined)
   const updateData: UpdateSalesCaseData = {};
   
-  if (req.body.title !== undefined) {
+  if (req.body.title !== undefined && req.body.title !== null && req.body.title !== '') {
     updateData.title = req.body.title;
   }
   if (req.body.description !== undefined) {
-    updateData.description = req.body.description;
+    // Allow empty strings for description (for clearing notes)
+    updateData.description = req.body.description !== null ? req.body.description : null;
   }
-  if (req.body.status !== undefined) {
+  if (req.body.status !== undefined && req.body.status !== null && req.body.status !== '') {
     updateData.status = req.body.status;
   }
-  if (req.body.case_type !== undefined) {
+  if (req.body.case_type !== undefined && req.body.case_type !== null && req.body.case_type !== '') {
     updateData.case_type = req.body.case_type;
   }
-  if (req.body.quotation_status !== undefined) {
+  if (req.body.quotation_status !== undefined && req.body.quotation_status !== null && req.body.quotation_status !== '') {
     updateData.quotation_status = req.body.quotation_status;
   }
-  if (req.body.value !== undefined) {
-    updateData.value = req.body.value;
+  if (req.body.value !== undefined && req.body.value !== null) {
+    updateData.value = typeof req.body.value === 'string' ? parseFloat(req.body.value) : req.body.value;
   }
-  if (req.body.probability !== undefined) {
-    updateData.probability = req.body.probability;
+  if (req.body.probability !== undefined && req.body.probability !== null) {
+    updateData.probability = typeof req.body.probability === 'string' ? parseInt(req.body.probability) : req.body.probability;
   }
-  if (req.body.expected_close_date !== undefined) {
+  if (req.body.expected_close_date !== undefined && req.body.expected_close_date !== null && req.body.expected_close_date !== '') {
     updateData.expected_close_date = req.body.expected_close_date;
   }
-  if (req.body.assigned_to !== undefined) {
-    updateData.assigned_to = req.body.assigned_to;
+  if (req.body.assigned_to !== undefined && req.body.assigned_to !== null && req.body.assigned_to !== '') {
+    updateData.assigned_to = typeof req.body.assigned_to === 'string' ? parseInt(req.body.assigned_to) : req.body.assigned_to;
   }
-  if (req.body.linked_items !== undefined) {
-    updateData.linked_items = req.body.linked_items;
+  if (req.body.linked_items !== undefined && req.body.linked_items !== null) {
+    updateData.linked_items = Array.isArray(req.body.linked_items) ? req.body.linked_items.map((item: any) => typeof item === 'string' ? parseInt(item) : item) : [];
   }
-  if (req.body.assigned_departments !== undefined) {
-    updateData.assigned_departments = req.body.assigned_departments;
+  if (req.body.assigned_departments !== undefined && req.body.assigned_departments !== null) {
+    updateData.assigned_departments = Array.isArray(req.body.assigned_departments) ? req.body.assigned_departments.map((dept: any) => typeof dept === 'string' ? parseInt(dept) : dept) : [];
   }
 
   // Check if we have any fields to update
@@ -162,7 +158,13 @@ export const updateSalesCase = asyncHandler(async (req: Request, res: Response) 
     throw new ValidationError('No fields provided to update');
   }
 
-  const salesCase = await SalesCaseModel.updateSalesCase(req.params.id, updateData);
+  // Ensure ID is converted to string for consistency
+  const caseId = String(req.params.id);
+  
+  console.log('Updating sales case with ID:', caseId);
+  console.log('Update data:', JSON.stringify(updateData, null, 2));
+  
+  const salesCase = await SalesCaseModel.updateSalesCase(caseId, updateData);
   
   successResponse(res, salesCase, 'Sales case updated successfully');
 });

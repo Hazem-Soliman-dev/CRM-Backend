@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { body } from 'express-validator';
+import { body, param } from 'express-validator';
 import {
   getOperationsTasks,
   getOperationsTaskById,
@@ -47,7 +47,14 @@ const baseValidation = [
 router.use(authenticate);
 
 router.get('/', checkModuleAccess('operations'), requireRead('operations'), getOperationsTasks);
-router.get('/:id', checkModuleAccess('operations'), requireRead('operations'), getOperationsTaskById);
+router.get(
+  '/:id',
+  checkModuleAccess('operations'),
+  requireRead('operations'),
+  param('id').isInt({ min: 1 }).withMessage('Invalid task identifier'),
+  validate,
+  getOperationsTaskById
+);
 router.post(
   '/',
   checkModuleAccess('operations'),
@@ -60,6 +67,7 @@ router.put(
   '/:id',
   checkModuleAccess('operations'),
   requireUpdate('operations'),
+  param('id').isInt({ min: 1 }).withMessage('Invalid task identifier'),
   baseValidation,
   validate,
   updateOperationsTask
@@ -68,13 +76,21 @@ router.patch(
   '/:id/status',
   checkModuleAccess('operations'),
   requireUpdate('operations'),
+  param('id').isInt({ min: 1 }).withMessage('Invalid task identifier'),
   body('status')
     .isIn(['Pending', 'In Progress', 'Completed', 'Delayed'])
     .withMessage('Invalid task status'),
   validate,
   updateOperationsTaskStatus
 );
-router.delete('/:id', checkModuleAccess('operations'), requireDelete('operations'), deleteOperationsTask);
+router.delete(
+  '/:id',
+  checkModuleAccess('operations'),
+  requireDelete('operations'),
+  param('id').isInt({ min: 1 }).withMessage('Invalid task identifier'),
+  validate,
+  deleteOperationsTask
+);
 
 export default router;
 

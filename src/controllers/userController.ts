@@ -14,8 +14,8 @@ export const validateCreateUser = [
   body("full_name").notEmpty().withMessage("Full name is required"),
   body("phone").optional().isString(),
   body("role")
-    .isIn(["admin", "manager", "agent", "customer"])
-    .withMessage("Invalid role"),
+    .isIn(["admin", "customer", "sales", "reservation", "finance", "operations"])
+    .withMessage("Invalid role. Must be one of: admin, customer, sales, reservation, finance, operations"),
   body("department").optional().isString(),
 ];
 
@@ -28,8 +28,8 @@ export const validateUpdateUser = [
   body("phone").optional().isString(),
   body("role")
     .optional()
-    .isIn(["admin", "manager", "agent", "customer"])
-    .withMessage("Invalid role"),
+    .isIn(["admin", "customer", "sales", "reservation", "finance", "operations"])
+    .withMessage("Invalid role. Must be one of: admin, customer, sales, reservation, finance, operations"),
   body("department").optional().isString(),
   body("status")
     .optional()
@@ -82,16 +82,6 @@ export const getUserById = asyncHandler(async (req: Request, res: Response) => {
 
 // Create new user
 export const createUser = asyncHandler(async (req: Request, res: Response) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    throw new ValidationError(
-      errors
-        .array()
-        .map((error: any) => error.msg)
-        .join(", ")
-    );
-  }
-
   const userData: CreateUserData = {
     email: req.body.email,
     password: req.body.password,

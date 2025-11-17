@@ -67,11 +67,15 @@ export class UserModel {
 
       const insertId = (db.prepare('SELECT last_insert_rowid() as id').get() as any).id;
       return await this.findUserById(insertId.toString());
-    } catch (error) {
+    } catch (error: any) {
+      // Log the actual error for debugging
+      console.error('Error creating user:', error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to create user', 500);
+      // Provide more detailed error message
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      throw new AppError(`Failed to create user: ${errorMessage}`, 500);
     }
   }
 

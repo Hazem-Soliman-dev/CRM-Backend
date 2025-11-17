@@ -341,12 +341,20 @@ export class OperationsTripModel {
         params.push(data.duration || null);
       }
       if (data.startDate !== undefined) {
+        // Ensure startDate is a string (YYYY-MM-DD format) or null
+        const startDateValue = data.startDate 
+          ? (data.startDate.includes('T') ? data.startDate.split('T')[0] : data.startDate)
+          : null;
         fields.push('start_date = ?');
-        params.push(data.startDate ? new Date(data.startDate) : null);
+        params.push(startDateValue);
       }
       if (data.endDate !== undefined) {
+        // Ensure endDate is a string (YYYY-MM-DD format) or null
+        const endDateValue = data.endDate 
+          ? (data.endDate.includes('T') ? data.endDate.split('T')[0] : data.endDate)
+          : null;
         fields.push('end_date = ?');
-        params.push(data.endDate ? new Date(data.endDate) : null);
+        params.push(endDateValue);
       }
       if (data.destinations !== undefined) {
         fields.push('destinations = ?');
@@ -396,11 +404,15 @@ export class OperationsTripModel {
 
       db.prepare(query).run(...params);
       return await this.findTripById(id);
-    } catch (error) {
+    } catch (error: any) {
+      // Log the actual error for debugging
+      console.error('Error updating trip:', error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to update trip', 500);
+      // Provide more detailed error message
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      throw new AppError(`Failed to update trip: ${errorMessage}`, 500);
     }
   }
 
@@ -485,6 +497,12 @@ export class OperationsTripModel {
 
   static async createOptionalService(data: CreateOptionalServiceData): Promise<OptionalService> {
     try {
+      // Verify trip exists first
+      const trip = await this.findTripById(data.tripId);
+      if (!trip) {
+        throw new NotFoundError('Trip not found');
+      }
+
       const serviceCode = `OPT-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 1000)
         .toString()
         .padStart(3, '0')}`;
@@ -496,6 +514,11 @@ export class OperationsTripModel {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
+      // Ensure addedDate is a string (YYYY-MM-DD format) or null
+      const addedDateValue = data.addedDate 
+        ? (data.addedDate.includes('T') ? data.addedDate.split('T')[0] : data.addedDate)
+        : null;
+
       db.prepare(query).run(
         serviceCode,
         data.tripId,
@@ -503,15 +526,22 @@ export class OperationsTripModel {
         data.category || null,
         data.price ?? 0,
         data.addedBy || null,
-        data.addedDate ? new Date(data.addedDate) : null,
+        addedDateValue,
         data.status || 'Added',
         data.invoiced ? 1 : 0
       );
 
       const insertId = db.prepare("SELECT last_insert_rowid() as id").get() as any;
       return await this.findOptionalService(data.tripId, insertId.id);
-    } catch (error) {
-      throw new AppError('Failed to create optional service', 500);
+    } catch (error: any) {
+      // Log the actual error for debugging
+      console.error('Error creating optional service:', error);
+      if (error instanceof AppError) {
+        throw error;
+      }
+      // Provide more detailed error message
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      throw new AppError(`Failed to create optional service: ${errorMessage}`, 500);
     }
   }
 
@@ -541,8 +571,12 @@ export class OperationsTripModel {
         params.push(data.addedBy || null);
       }
       if (data.addedDate !== undefined) {
+        // Ensure addedDate is a string (YYYY-MM-DD format) or null
+        const addedDateValue = data.addedDate 
+          ? (data.addedDate.includes('T') ? data.addedDate.split('T')[0] : data.addedDate)
+          : null;
         fields.push('added_date = ?');
-        params.push(data.addedDate ? new Date(data.addedDate) : null);
+        params.push(addedDateValue);
       }
       if (data.status !== undefined) {
         fields.push('status = ?');
@@ -568,11 +602,15 @@ export class OperationsTripModel {
 
       db.prepare(query).run(...params);
       return await this.findOptionalService(tripId, serviceId);
-    } catch (error) {
+    } catch (error: any) {
+      // Log the actual error for debugging
+      console.error('Error updating optional service:', error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to update optional service', 500);
+      // Provide more detailed error message
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      throw new AppError(`Failed to update optional service: ${errorMessage}`, 500);
     }
   }
 

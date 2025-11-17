@@ -14,6 +14,7 @@ import {
 } from '../controllers/userController';
 import { authenticate } from '../middleware/auth';
 import { requireRead, requireCreate, requireUpdate, requireDelete, checkModuleAccess } from '../middleware/permission';
+import { validate } from '../middleware/validate';
 import { body } from 'express-validator';
 
 const router = Router();
@@ -39,6 +40,7 @@ router.get('/:id',
 // Create new user
 router.post('/',
   validateCreateUser,
+  validate,
   checkModuleAccess('users'),
   requireCreate('users'),
   createUser

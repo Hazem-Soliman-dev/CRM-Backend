@@ -202,31 +202,46 @@ export class CustomerModel {
         ${whereClause}
       `;
       const db = getDatabase();
-      
+
       // Filter out undefined values for count query
-      const countParams = queryParams.filter(p => p !== undefined);
+      const countParams = queryParams.filter((p) => p !== undefined);
       const countResult = db.prepare(countQuery).get(...countParams) as any;
       const total = countResult.total;
 
-      // Main query
+      // Main query - calculate booking counts and values from actual reservations
       const page = filters.page || 1;
       const limit = filters.limit || 10;
       const offset = (page - 1) * limit;
 
       const query = `
-        SELECT c.*, u.full_name as staff_name, u.email as staff_email
+        SELECT 
+          c.*,
+          u.full_name as staff_name,
+          u.email as staff_email,
+          COUNT(DISTINCT r.id) as total_bookings,
+          COALESCE((
+            SELECT SUM(p2.amount) 
+            FROM payments p2 
+            INNER JOIN reservations r2 ON p2.booking_id = r2.id 
+            WHERE r2.customer_id = c.id AND p2.payment_status = 'Completed'
+          ), 0) as total_value,
+          MAX(r.created_at) as last_trip
         FROM customers c
         LEFT JOIN users u ON c.assigned_staff_id = u.id
+        LEFT JOIN reservations r ON c.id = r.customer_id
         ${whereClause}
+        GROUP BY c.id
         ORDER BY c.created_at DESC
         LIMIT ? OFFSET ?
       `;
 
       // Combine query params with limit and offset, filtering out undefined
-      const allParams = [...queryParams.filter(p => p !== undefined), limit, offset];
-      const customers = db
-        .prepare(query)
-        .all(...allParams) as any[];
+      const allParams = [
+        ...queryParams.filter((p) => p !== undefined),
+        limit,
+        offset,
+      ];
+      const customers = db.prepare(query).all(...allParams) as any[];
 
       const formattedCustomers: Customer[] = customers.map((customer) => ({
         id: customer.id,
@@ -246,9 +261,15 @@ export class CustomerModel {
               email: customer.staff_email,
             }
           : undefined,
-        total_bookings: customer.total_bookings,
-        total_value: customer.total_value,
-        last_trip: customer.last_trip,
+        total_bookings:
+          typeof customer.total_bookings === "number"
+            ? customer.total_bookings
+            : parseInt(String(customer.total_bookings || 0), 10),
+        total_value:
+          typeof customer.total_value === "number"
+            ? customer.total_value
+            : parseFloat(String(customer.total_value || 0)),
+        last_trip: customer.last_trip || null,
         notes: customer.notes,
         created_at: customer.created_at,
         updated_at: customer.updated_at,
@@ -269,10 +290,66 @@ export class CustomerModel {
       const fields = [];
       const values = [];
 
+      // Only process fields that are allowed to be updated
+      const allowedFields = [
+        "name",
+        "email",
+        "phone",
+        "company",
+        "type",
+        "status",
+        "contact_method",
+        "assigned_staff_id",
+        "notes",
+      ];
+
       Object.entries(updateData).forEach(([key, value]) => {
-        if (value !== undefined) {
-          fields.push(`${key} = ?`);
-          values.push(value);
+        // Only process allowed fields and skip undefined values
+        if (allowedFields.includes(key) && value !== undefined) {
+          if (key === "assigned_staff_id") {
+            // Handle assigned_staff_id: convert to integer or null
+            if (value === "" || value === null || value === undefined) {
+              fields.push(`${key} = ?`);
+              values.push(null);
+            } else {
+              // Convert number or string to integer
+              const staffId =
+                typeof value === "number" ? value : parseInt(String(value), 10);
+              if (isNaN(staffId)) {
+                throw new AppError("Invalid assigned_staff_id", 400);
+              }
+              fields.push(`${key} = ?`);
+              values.push(staffId);
+            }
+          } else if (key === "contact_method") {
+            // Validate and normalize contact_method
+            const validMethods = ["Email", "Phone", "SMS"];
+            const method = String(value);
+            if (method === "WhatsApp") {
+              // Convert WhatsApp to SMS
+              fields.push(`${key} = ?`);
+              values.push("SMS");
+            } else if (validMethods.includes(method)) {
+              fields.push(`${key} = ?`);
+              values.push(method);
+            } else {
+              throw new AppError(
+                `Invalid contact_method. Must be one of: ${validMethods.join(
+                  ", "
+                )}`,
+                400
+              );
+            }
+          } else {
+            // For optional string fields, convert empty strings to null
+            if ((key === "company" || key === "notes") && value === "") {
+              fields.push(`${key} = ?`);
+              values.push(null);
+            } else {
+              fields.push(`${key} = ?`);
+              values.push(value);
+            }
+          }
         }
       });
 
@@ -285,14 +362,22 @@ export class CustomerModel {
 
       const query = `UPDATE customers SET ${fields.join(", ")} WHERE id = ?`;
       const db = getDatabase();
-      db.prepare(query).run(...values);
+      const result = db.prepare(query).run(...values);
+
+      if (result.changes === 0) {
+        throw new NotFoundError("Customer not found");
+      }
 
       return await this.findCustomerById(id);
     } catch (error) {
-      if (error instanceof AppError) {
+      if (error instanceof AppError || error instanceof NotFoundError) {
         throw error;
       }
-      throw new AppError("Failed to update customer", 500);
+      // Log the actual error for debugging
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error("Update customer error:", errorMessage);
+      throw new AppError(`Failed to update customer: ${errorMessage}`, 500);
     }
   }
 

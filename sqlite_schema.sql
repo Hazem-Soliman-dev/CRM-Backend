@@ -100,6 +100,37 @@ CREATE TABLE IF NOT EXISTS reservations (
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Reservation Notes table
+CREATE TABLE IF NOT EXISTS reservation_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reservation_id INTEGER NOT NULL,
+    note TEXT NOT NULL,
+    note_type TEXT CHECK(note_type IN ('internal', 'interdepartmental', 'supplier_update')) DEFAULT 'internal',
+    target_department TEXT,
+    created_by INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Reservation Documents table
+CREATE TABLE IF NOT EXISTS reservation_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reservation_id INTEGER NOT NULL,
+    document_name TEXT NOT NULL,
+    document_type TEXT NOT NULL,
+    file_data TEXT NOT NULL, -- Base64 encoded file
+    file_size INTEGER NOT NULL,
+    mime_type TEXT NOT NULL,
+    description TEXT,
+    uploaded_by INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
+    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Payments table
 CREATE TABLE IF NOT EXISTS payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -283,6 +314,20 @@ CREATE TABLE IF NOT EXISTS operations_tasks (
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (trip_id) REFERENCES operations_trips(id) ON DELETE SET NULL,
     FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Operations Trip Notes table
+CREATE TABLE IF NOT EXISTS operations_trip_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trip_id INTEGER NOT NULL,
+    note TEXT NOT NULL,
+    note_type TEXT CHECK(note_type IN ('internal', 'interdepartmental')) DEFAULT 'internal',
+    target_department TEXT,
+    created_by INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (trip_id) REFERENCES operations_trips(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Notifications table

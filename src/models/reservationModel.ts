@@ -96,6 +96,74 @@ export class ReservationModel {
     try {
       const reservation_id = this.generateReservationId();
       
+      // Convert IDs to integers (database expects INTEGER)
+      const customerId = typeof reservationData.customer_id === 'number' 
+        ? reservationData.customer_id 
+        : parseInt(String(reservationData.customer_id), 10);
+      
+      if (isNaN(customerId)) {
+        throw new AppError('Invalid customer_id', 400);
+      }
+
+      const supplierId = reservationData.supplier_id 
+        ? (typeof reservationData.supplier_id === 'number' 
+            ? reservationData.supplier_id 
+            : parseInt(String(reservationData.supplier_id), 10))
+        : null;
+      
+      if (supplierId !== null && isNaN(supplierId)) {
+        throw new AppError('Invalid supplier_id', 400);
+      }
+
+      const createdById = typeof createdBy === 'number' 
+        ? createdBy 
+        : parseInt(String(createdBy), 10);
+      
+      if (isNaN(createdById)) {
+        throw new AppError('Invalid created_by user ID', 400);
+      }
+
+      // Validate required fields
+      if (!reservationData.service_type || !reservationData.destination || !reservationData.departure_date) {
+        throw new AppError('service_type, destination, and departure_date are required', 400);
+      }
+
+      // Validate service_type
+      const validServiceTypes = ['Flight', 'Hotel', 'Car Rental', 'Tour', 'Package', 'Other'];
+      if (!validServiceTypes.includes(reservationData.service_type)) {
+        throw new AppError(`Invalid service_type. Must be one of: ${validServiceTypes.join(', ')}`, 400);
+      }
+
+      // Ensure numeric fields are numbers
+      const adults = typeof reservationData.adults === 'number' 
+        ? reservationData.adults 
+        : parseInt(String(reservationData.adults || 1), 10);
+      
+      const children = typeof reservationData.children === 'number' 
+        ? reservationData.children 
+        : parseInt(String(reservationData.children || 0), 10);
+      
+      const infants = typeof reservationData.infants === 'number' 
+        ? reservationData.infants 
+        : parseInt(String(reservationData.infants || 0), 10);
+      
+      const totalAmount = typeof reservationData.total_amount === 'number' 
+        ? reservationData.total_amount 
+        : parseFloat(String(reservationData.total_amount || 0));
+
+      if (isNaN(adults) || adults < 0) {
+        throw new AppError('Invalid adults count', 400);
+      }
+      if (isNaN(children) || children < 0) {
+        throw new AppError('Invalid children count', 400);
+      }
+      if (isNaN(infants) || infants < 0) {
+        throw new AppError('Invalid infants count', 400);
+      }
+      if (isNaN(totalAmount) || totalAmount < 0) {
+        throw new AppError('Invalid total_amount', 400);
+      }
+      
       const query = `
         INSERT INTO reservations (
           reservation_id, customer_id, supplier_id, service_type, destination,
@@ -107,24 +175,31 @@ export class ReservationModel {
       const db = getDatabase();
       db.prepare(query).run(
         reservation_id,
-        reservationData.customer_id,
-        reservationData.supplier_id || null,
+        customerId,
+        supplierId,
         reservationData.service_type,
         reservationData.destination,
         reservationData.departure_date,
         reservationData.return_date || null,
-        reservationData.adults,
-        reservationData.children || 0,
-        reservationData.infants || 0,
-        reservationData.total_amount,
+        adults,
+        children,
+        infants,
+        totalAmount,
         reservationData.notes || null,
-        createdBy
+        createdById
       );
 
       const insertId = (db.prepare('SELECT last_insert_rowid() as id').get() as any).id;
       return await this.findReservationById(insertId.toString());
     } catch (error) {
-      throw new AppError('Failed to create reservation', 500);
+      if (error instanceof AppError) {
+        throw error;
+      }
+      // Log the actual error for debugging
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Create reservation error:', errorMessage);
+      console.error('Create reservation error details:', error);
+      throw new AppError(`Failed to create reservation: ${errorMessage}`, 500);
     }
   }
 
@@ -341,6 +416,23 @@ export class ReservationModel {
   // Update reservation
   static async updateReservation(id: string, updateData: UpdateReservationData): Promise<Reservation> {
     try {
+      // Prevent updating customer_id - it's not allowed
+      if ('customer_id' in updateData && updateData.customer_id !== undefined) {
+        throw new AppError('customer_id cannot be updated', 400);
+      }
+
+      // Validate and convert supplier_id if provided
+      if (updateData.supplier_id !== undefined) {
+        const supplierId = typeof updateData.supplier_id === 'number' 
+          ? updateData.supplier_id 
+          : parseInt(String(updateData.supplier_id), 10);
+        
+        if (isNaN(supplierId) || supplierId <= 0) {
+          throw new AppError('Invalid supplier_id', 400);
+        }
+        updateData.supplier_id = supplierId;
+      }
+
       const fields = [];
       const values = [];
 

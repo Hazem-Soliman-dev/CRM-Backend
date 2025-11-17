@@ -69,7 +69,7 @@ export interface UpdateSalesCaseData {
   value?: number;
   probability?: number;
   expected_close_date?: string;
-  assigned_to?: string;
+  assigned_to?: string | number;
   linked_items?: number[];
   assigned_departments?: number[];
 }
@@ -118,10 +118,12 @@ export class SalesCaseModel {
         salesCaseData.probability || 0,
         salesCaseData.expected_close_date || null,
         salesCaseData.assigned_to || null,
-        createdBy,
+        createdBy
       );
 
-      const insertId = (db.prepare('SELECT last_insert_rowid() as id').get() as any).id;
+      const insertId = (
+        db.prepare("SELECT last_insert_rowid() as id").get() as any
+      ).id;
       return await this.findSalesCaseById(insertId.toString());
     } catch (error: any) {
       console.error("Error creating sales case:", error);
@@ -159,12 +161,14 @@ export class SalesCaseModel {
       // Get linked items - gracefully handle if table doesn't exist
       let linkedItems: any[] = [];
       try {
-        const itemsRows = db.prepare(
-          `SELECT i.id, i.name, i.product_name 
+        const itemsRows = db
+          .prepare(
+            `SELECT i.id, i.name, i.product_name 
            FROM sales_case_items sci
            JOIN items i ON sci.item_id = i.id
            WHERE sci.sales_case_id = ?`
-        ).all(id) as any[];
+          )
+          .all(id) as any[];
         linkedItems = itemsRows.map((item) => ({
           id: item.id.toString(),
           name: item.name,
@@ -181,12 +185,14 @@ export class SalesCaseModel {
       // Get assigned departments - gracefully handle if table doesn't exist
       let assignedDepartments: any[] = [];
       try {
-        const deptRows = db.prepare(
-          `SELECT d.id, d.name
+        const deptRows = db
+          .prepare(
+            `SELECT d.id, d.name
            FROM sales_case_departments scd
            JOIN departments d ON scd.department_id = d.id
            WHERE scd.sales_case_id = ?`
-        ).all(id) as any[];
+          )
+          .all(id) as any[];
         assignedDepartments = deptRows.map((dept) => ({
           id: dept.id.toString(),
           name: dept.name,
@@ -316,9 +322,9 @@ export class SalesCaseModel {
         ${whereClause}
       `;
       const db = getDatabase();
-      
+
       // Filter out undefined values for count query
-      const countParams = queryParams.filter(p => p !== undefined);
+      const countParams = queryParams.filter((p) => p !== undefined);
       const countResult = db.prepare(countQuery).get(...countParams) as any;
       const total = countResult.total;
 
@@ -344,7 +350,11 @@ export class SalesCaseModel {
       `;
 
       // Combine query params with limit and offset, filtering out undefined
-      const allParams = [...queryParams.filter(p => p !== undefined), limit, offset];
+      const allParams = [
+        ...queryParams.filter((p) => p !== undefined),
+        limit,
+        offset,
+      ];
       const salesCases = db.prepare(query).all(...allParams) as any[];
 
       const formattedSalesCases: SalesCase[] = salesCases.map((salesCase) => ({
@@ -404,7 +414,21 @@ export class SalesCaseModel {
     updateData: UpdateSalesCaseData
   ): Promise<SalesCase> {
     const db = getDatabase();
-    
+
+    // Convert ID to integer for database query
+    const caseId = parseInt(id);
+    if (isNaN(caseId)) {
+      throw new AppError(`Invalid sales case ID: ${id}`, 400);
+    }
+
+    // Verify the case exists before updating
+    const existingCase = db
+      .prepare("SELECT id FROM sales_cases WHERE id = ?")
+      .get(caseId) as any;
+    if (!existingCase) {
+      throw new NotFoundError(`Sales case with ID ${id} not found`);
+    }
+
     // Extract junction table data before updating main table
     const linkedItems = updateData.linked_items;
     const assignedDepartments = updateData.assigned_departments;
@@ -421,15 +445,14 @@ export class SalesCaseModel {
     let hasQuotationStatus = false;
     try {
       // SQLite doesn't have INFORMATION_SCHEMA, use PRAGMA instead
-      const columns = db.prepare(`PRAGMA table_info(sales_cases)`).all() as any[];
-      const columnNames = columns.map(col => col.name);
+      const columns = db
+        .prepare(`PRAGMA table_info(sales_cases)`)
+        .all() as any[];
+      const columnNames = columns.map((col) => col.name);
       hasCaseType = columnNames.includes("case_type");
       hasQuotationStatus = columnNames.includes("quotation_status");
     } catch (colCheckError: any) {
-      console.warn(
-        "Could not check column existence:",
-        colCheckError.message
-      );
+      console.warn("Could not check column existence:", colCheckError.message);
     }
 
     // SQLite transaction - better-sqlite3 uses transaction wrapper
@@ -446,7 +469,8 @@ export class SalesCaseModel {
         }
         if (mainUpdateData.description !== undefined) {
           fields.push("description = ?");
-          values.push(mainUpdateData.description || null);
+          // Allow empty strings - don't convert to null
+          values.push(mainUpdateData.description !== null ? mainUpdateData.description : null);
         }
         if (mainUpdateData.status !== undefined) {
           fields.push("status = ?");
@@ -460,7 +484,10 @@ export class SalesCaseModel {
           console.warn("case_type column does not exist - skipping update");
         }
         // Only update quotation_status if column exists
-        if (mainUpdateData.quotation_status !== undefined && hasQuotationStatus) {
+        if (
+          mainUpdateData.quotation_status !== undefined &&
+          hasQuotationStatus
+        ) {
           fields.push("quotation_status = ?");
           values.push(mainUpdateData.quotation_status);
         } else if (mainUpdateData.quotation_status !== undefined) {
@@ -482,29 +509,46 @@ export class SalesCaseModel {
         }
         if (mainUpdateData.assigned_to !== undefined) {
           fields.push("assigned_to = ?");
-          values.push(mainUpdateData.assigned_to || null);
+          // Convert to integer if it's a string, or use null if empty
+          const assignedToValue = mainUpdateData.assigned_to
+            ? typeof mainUpdateData.assigned_to === "string"
+              ? parseInt(mainUpdateData.assigned_to)
+              : mainUpdateData.assigned_to
+            : null;
+          values.push(assignedToValue);
         }
 
         // Always update the updated_at timestamp
         if (fields.length > 0) {
           fields.push("updated_at = datetime('now')");
-          values.push(id);
+          values.push(caseId);
           const updateQuery = `UPDATE sales_cases SET ${fields.join(
             ", "
           )} WHERE id = ?`;
           console.log("Update query:", updateQuery);
           console.log("Update values:", values);
-          db.prepare(updateQuery).run(...values);
+          const result = db.prepare(updateQuery).run(...values);
+          console.log("Update result - changes:", result.changes);
+          if (result.changes === 0) {
+            throw new AppError(
+              `No rows updated for sales case ID ${caseId}`,
+              400
+            );
+          }
         }
 
         // Update linked items (replace existing) - gracefully handle if table doesn't exist
         if (linkedItems !== undefined) {
           try {
-            db.prepare("DELETE FROM sales_case_items WHERE sales_case_id = ?").run(id);
+            db.prepare(
+              "DELETE FROM sales_case_items WHERE sales_case_id = ?"
+            ).run(caseId);
             if (linkedItems.length > 0) {
-              const insertItemStmt = db.prepare("INSERT INTO sales_case_items (sales_case_id, item_id) VALUES (?, ?)");
+              const insertItemStmt = db.prepare(
+                "INSERT INTO sales_case_items (sales_case_id, item_id) VALUES (?, ?)"
+              );
               for (const itemId of linkedItems) {
-                insertItemStmt.run(id, itemId);
+                insertItemStmt.run(caseId, itemId);
               }
             }
           } catch (junctionError: any) {
@@ -519,11 +563,15 @@ export class SalesCaseModel {
         // Update assigned departments (replace existing) - gracefully handle if table doesn't exist
         if (assignedDepartments !== undefined) {
           try {
-            db.prepare("DELETE FROM sales_case_departments WHERE sales_case_id = ?").run(id);
+            db.prepare(
+              "DELETE FROM sales_case_departments WHERE sales_case_id = ?"
+            ).run(caseId);
             if (assignedDepartments.length > 0) {
-              const insertDeptStmt = db.prepare("INSERT INTO sales_case_departments (sales_case_id, department_id) VALUES (?, ?)");
+              const insertDeptStmt = db.prepare(
+                "INSERT INTO sales_case_departments (sales_case_id, department_id) VALUES (?, ?)"
+              );
               for (const deptId of assignedDepartments) {
-                insertDeptStmt.run(id, deptId);
+                insertDeptStmt.run(caseId, deptId);
               }
             }
           } catch (junctionError: any) {
@@ -535,10 +583,10 @@ export class SalesCaseModel {
           }
         }
       });
-      
+
       // Execute transaction
       transaction();
-      return await this.findSalesCaseById(id);
+      return await this.findSalesCaseById(caseId.toString());
     } catch (error: any) {
       console.error("Update sales case error:", error);
       console.error("Error message:", error.message);

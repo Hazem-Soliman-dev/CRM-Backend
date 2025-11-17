@@ -49,6 +49,91 @@ export const initializeSchema = async (): Promise<void> => {
     if (tableExists(database, "users")) {
       schemaInitialized = true;
       console.log("ℹ️  Database schema already exists");
+      
+      // Check and create new tables if they don't exist (migration)
+      if (!tableExists(database, "reservation_notes")) {
+        console.log("🛠  Creating reservation_notes table...");
+        database.prepare(`
+          CREATE TABLE IF NOT EXISTS reservation_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reservation_id INTEGER NOT NULL,
+            note TEXT NOT NULL,
+            note_type TEXT CHECK(note_type IN ('internal', 'interdepartmental', 'supplier_update')) DEFAULT 'internal',
+            target_department TEXT,
+            created_by INTEGER NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `).run();
+        console.log("✅ reservation_notes table created");
+      }
+      
+      if (!tableExists(database, "reservation_documents")) {
+        console.log("🛠  Creating reservation_documents table...");
+        database.prepare(`
+          CREATE TABLE IF NOT EXISTS reservation_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reservation_id INTEGER NOT NULL,
+            document_name TEXT NOT NULL,
+            document_type TEXT NOT NULL,
+            file_data TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            mime_type TEXT NOT NULL,
+            description TEXT,
+            uploaded_by INTEGER NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
+            FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `).run();
+        console.log("✅ reservation_documents table created");
+      }
+
+      if (!tableExists(database, "invoices")) {
+        console.log("🛠  Creating invoices table...");
+        database.prepare(`
+          CREATE TABLE IF NOT EXISTS invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id TEXT UNIQUE NOT NULL,
+            booking_id INTEGER NOT NULL,
+            customer_id INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            due_date TEXT NOT NULL,
+            payment_terms TEXT,
+            status TEXT CHECK(status IN ('Draft', 'Issued', 'Sent', 'Paid', 'Overdue', 'Cancelled')) DEFAULT 'Draft',
+            notes TEXT,
+            created_by INTEGER NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (booking_id) REFERENCES reservations(id) ON DELETE CASCADE,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `).run();
+        console.log("✅ invoices table created");
+      }
+
+      if (!tableExists(database, "operations_trip_notes")) {
+        console.log("🛠  Creating operations_trip_notes table...");
+        database.prepare(`
+          CREATE TABLE IF NOT EXISTS operations_trip_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id INTEGER NOT NULL,
+            note TEXT NOT NULL,
+            note_type TEXT CHECK(note_type IN ('internal', 'interdepartmental')) DEFAULT 'internal',
+            target_department TEXT,
+            created_by INTEGER NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (trip_id) REFERENCES operations_trips(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `).run();
+        console.log("✅ operations_trip_notes table created");
+      }
 
       // Lightweight migration: expand users.role and role_permissions.role enum values if old constraint is present
       try {
