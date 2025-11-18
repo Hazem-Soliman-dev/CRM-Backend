@@ -65,7 +65,7 @@ export async function generatePdfBuffer(
   await page.setUserAgent(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
   );
-  page.on("console", (msg) => {
+  page.on("console", (msg: any) => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const text: any = (msg as any).text ? (msg as any).text() : msg.type();
@@ -74,8 +74,8 @@ export async function generatePdfBuffer(
       // ignore
     }
   });
-  page.on("pageerror", (err) => console.error("[PDF pageerror]", err));
-  page.on("requestfailed", (req) =>
+  page.on("pageerror", (err: any) => console.error("[PDF pageerror]", err));
+  page.on("requestfailed", (req: any) =>
     console.warn("[PDF requestfailed]", req.url(), req.failure()?.errorText)
   );
 

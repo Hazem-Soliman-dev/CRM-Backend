@@ -1,0 +1,40 @@
+# Development files
+node_modules
+.env
+.env.local
+.env.*.local
+
+# TypeScript source (we deploy compiled JS)
+src/
+
+# Build artifacts
+*.log
+npm-debug.log*
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Testing
+coverage/
+.nyc_output/
+
+# Documentation (keep in repo but don't need in deployment)
+*.md
+
+# Git
+.git
+.gitignore
+
+# Vercel specific (not needed anymore)
+.vercel
+vercel.json
+api/
+
+# Database files (will be created fresh on Railway)
+*.db
+*.db-shm
+*.db-wal
+

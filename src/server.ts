@@ -110,13 +110,8 @@ app.use(errorHandler);
 // Initialize database connection
 initializeDatabase();
 
-// Start server (only in non-serverless mode)
+// Start server
 const startServer = async () => {
-  // Skip server start in Vercel serverless environment
-  if (process.env.VERCEL === "1") {
-    return;
-  }
-
   try {
     // Initialize schema and seed data before starting server
     const { initializeSchema } = await import("./config/database");
@@ -167,10 +162,8 @@ process.on("SIGINT", () => {
   process.exit(0);
 });
 
-// Only start server if not in Vercel serverless mode
-if (process.env.VERCEL !== "1") {
-  startServer();
-}
+// Start the server
+startServer();
 
-// Export app for Vercel serverless
+// Export app for testing purposes
 export default app;

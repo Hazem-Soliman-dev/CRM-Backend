@@ -86,7 +86,7 @@ router.post("/export/pdf", authenticate, async (req: Request, res: Response) => 
 
 		// Generate HTML table for PDF
 		const html = generateHtmlTable(rows, reportType);
-		const pdfBuffer = await generatePdfBuffer({ html });
+		const pdfBuffer = await generatePdfBuffer({ html, type: "report" });
 		
 		// Ensure we have a proper Buffer
 		let pdf: Buffer;

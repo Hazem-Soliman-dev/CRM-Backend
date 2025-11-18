@@ -48,7 +48,7 @@ export const createReservationDocument = asyncHandler(async (req: Request, res: 
   
   const userId = typeof req.user!.userId === 'number' ? req.user!.userId : parseInt(String(req.user!.userId), 10);
   const newDocument = await ReservationDocumentModel.createDocument(documentData, userId);
-  successResponse(res, newDocument, 'Document uploaded successfully', 201);
+  return successResponse(res, newDocument, 'Document uploaded successfully', 201);
 });
 
 // Update document metadata

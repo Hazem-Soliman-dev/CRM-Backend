@@ -6,11 +6,8 @@ import bcrypt from "bcryptjs";
 
 dotenv.config();
 
-// Determine database path - use /tmp for Vercel serverless, local file for development
-const isVercel = process.env.VERCEL === "1";
-const dbPath = isVercel
-  ? "/tmp/database.db"
-  : path.join(process.cwd(), "database.db");
+// Determine database path - use persistent storage for Railway/production
+const dbPath = path.join(process.cwd(), "database.db");
 
 // Create database instance
 let db: Database.Database;
@@ -600,12 +597,10 @@ export const initializeDatabase = (): Database.Database => {
   }
 
   try {
-    // Ensure directory exists for local development
-    if (!isVercel) {
-      const dbDir = path.dirname(dbPath);
-      if (!fs.existsSync(dbDir)) {
-        fs.mkdirSync(dbDir, { recursive: true });
-      }
+    // Ensure directory exists
+    const dbDir = path.dirname(dbPath);
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
     }
 
     db = new Database(dbPath);

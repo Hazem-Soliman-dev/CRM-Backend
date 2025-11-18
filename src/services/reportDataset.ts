@@ -1,6 +1,6 @@
 import getDatabase from '../config/database';
-import { ReservationModel, ReservationFilters } from '../models/reservationModel';
-import { PaymentModel, PaymentFilters } from '../models/paymentModel';
+// import { ReservationModel, ReservationFilters } from '../models/reservationModel';
+// import { PaymentModel, PaymentFilters } from '../models/paymentModel';
 
 type Filters = Record<string, any>;
 
@@ -60,8 +60,8 @@ export async function getReportRows(
 
 async function buildMonthlyRevenueRows(
 	filters: Filters,
-	userRole: string,
-	userId: string
+	_userRole: string,
+	_userId: string
 ): Promise<Array<Record<string, any>>> {
 	const db = getDatabase();
 	const dateRange = getDateRangeFromFilters(filters);
@@ -119,8 +119,8 @@ async function buildMonthlyRevenueRows(
 
 async function buildClientAnalysisRows(
 	filters: Filters,
-	userRole: string,
-	userId: string
+	_userRole: string,
+	_userId: string
 ): Promise<Array<Record<string, any>>> {
 	const db = getDatabase();
 	const dateRange = getDateRangeFromFilters(filters);
@@ -161,8 +161,8 @@ async function buildClientAnalysisRows(
 
 async function buildSupplierPerformanceRows(
 	filters: Filters,
-	userRole: string,
-	userId: string
+	_userRole: string,
+	_userId: string
 ): Promise<Array<Record<string, any>>> {
 	const db = getDatabase();
 	const dateRange = getDateRangeFromFilters(filters);

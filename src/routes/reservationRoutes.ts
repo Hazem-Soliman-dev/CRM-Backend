@@ -21,7 +21,7 @@ import {
 } from "../controllers/reservationNoteController";
 import {
   getReservationDocuments,
-  getReservationDocumentById,
+  // getReservationDocumentById,
   getReservationDocumentMetadata,
   createReservationDocument,
   updateReservationDocument,

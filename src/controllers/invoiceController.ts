@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { InvoiceModel, CreateInvoiceData, UpdateInvoiceData, InvoiceFilters } from '../models/invoiceModel';
 import { successResponse, paginatedResponse } from '../utils/response';
 import { asyncHandler } from '../utils/asyncHandler';
-import { ValidationError } from '../utils/AppError';
+// import { ValidationError } from '../utils/AppError';
 
 // Get all invoices
 export const getAllInvoices = asyncHandler(async (req: Request, res: Response) => {

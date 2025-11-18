@@ -12,11 +12,11 @@ router.get("/:id/export/pdf", authenticate, async (req: Request, res: Response) 
 	try {
 		const { id } = req.params;
 		const filters = req.query as any;
-		const options = {
-			includeCharts: req.query.includeCharts !== 'false',
-			includeDetails: req.query.includeDetails !== 'false',
-			scope: req.query.scope || 'current'
-		};
+		// const options = {
+		// 	includeCharts: req.query.includeCharts !== 'false',
+		// 	includeDetails: req.query.includeDetails !== 'false',
+		// 	scope: req.query.scope || 'current'
+		// };
 
 		// Get report data
 		const userRole = req.user?.role || 'admin';
@@ -25,7 +25,7 @@ router.get("/:id/export/pdf", authenticate, async (req: Request, res: Response) 
 
 		// Generate HTML table for PDF
 		const html = generateHtmlTable(rows, id);
-		const pdfBuffer = await generatePdfBuffer({ html });
+		const pdfBuffer = await generatePdfBuffer({ html, type: "report" });
 		
 		// Ensure we have a proper Buffer
 		let pdf: Buffer;

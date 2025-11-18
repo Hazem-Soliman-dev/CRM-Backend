@@ -430,7 +430,7 @@ export class ReservationModel {
         if (isNaN(supplierId) || supplierId <= 0) {
           throw new AppError('Invalid supplier_id', 400);
         }
-        updateData.supplier_id = supplierId;
+        updateData.supplier_id = String(supplierId);
       }
 
       const fields = [];
