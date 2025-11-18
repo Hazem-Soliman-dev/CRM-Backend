@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { initializeSchema, seedData } from "../config/database";
+import { initializeSchema, seedData, seedMinimalDataForTurso } from "../config/database";
 
 // Singleton promise to prevent multiple simultaneous initializations
 let schemaInitPromise: Promise<void> | null = null;
@@ -25,8 +25,17 @@ export const ensureSchema = async (
     // Start initialization and store the promise
     schemaInitPromise = (async () => {
       await initializeSchema();
-      // Also seed data after schema is initialized
-      await seedData();
+      // Seed data based on database type
+      const isVercel = process.env.VERCEL === "1";
+      const useTurso = isVercel && !!(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+      
+      if (useTurso) {
+        // Use Turso-compatible seed function for Vercel
+        await seedMinimalDataForTurso();
+      } else {
+        // Use SQLite seed function for local dev
+        await seedData();
+      }
     })();
     await schemaInitPromise;
 

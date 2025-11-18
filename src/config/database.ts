@@ -8,8 +8,12 @@ import bcrypt from "bcryptjs";
 dotenv.config();
 
 // Determine if we should use Turso (for Vercel) or local SQLite
-const useTurso = !!(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+// Only use Turso when actually on Vercel, not just when env vars are set
+// This ensures local dev always uses SQLite
 const isVercel = process.env.VERCEL === "1";
+const useTurso =
+  isVercel &&
+  !!(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
 
 // Database instances
 let db: Database.Database | null = null;
@@ -17,20 +21,18 @@ let tursoClient: Client | null = null;
 let schemaInitialized = false;
 
 // Check if a table exists
-const tableExists = async (
-  tableName: string
-): Promise<boolean> => {
+const tableExists = async (tableName: string): Promise<boolean> => {
   try {
     if (useTurso && tursoClient) {
       const result = await tursoClient.execute({
         sql: "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-        args: [tableName]
+        args: [tableName],
       });
       return result.rows.length > 0;
     } else if (db) {
-      const result = db.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
-      ).get(tableName) as any;
+      const result = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+        .get(tableName) as any;
       return !!result;
     }
     return false;
@@ -46,17 +48,25 @@ export const initializeSchema = async (): Promise<void> => {
   }
 
   try {
+    // Ensure database is initialized before proceeding
+    initializeDatabase();
     const database = getDatabase();
+
+    if (!database) {
+      throw new Error("Database not initialized");
+    }
 
     // Check if users table exists (indicates schema is initialized)
     if (await tableExists("users")) {
       schemaInitialized = true;
       console.log("ℹ️  Database schema already exists");
-      
+
       // Check and create new tables if they don't exist (migration)
       if (!(await tableExists("reservation_notes"))) {
         console.log("🛠  Creating reservation_notes table...");
-        database.prepare(`
+        database
+          .prepare(
+            `
           CREATE TABLE IF NOT EXISTS reservation_notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             reservation_id INTEGER NOT NULL,
@@ -69,13 +79,17 @@ export const initializeSchema = async (): Promise<void> => {
             FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
             FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
           )
-        `).run();
+        `
+          )
+          .run();
         console.log("✅ reservation_notes table created");
       }
-      
+
       if (!(await tableExists("reservation_documents"))) {
         console.log("🛠  Creating reservation_documents table...");
-        database.prepare(`
+        database
+          .prepare(
+            `
           CREATE TABLE IF NOT EXISTS reservation_documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             reservation_id INTEGER NOT NULL,
@@ -91,13 +105,17 @@ export const initializeSchema = async (): Promise<void> => {
             FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
             FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
           )
-        `).run();
+        `
+          )
+          .run();
         console.log("✅ reservation_documents table created");
       }
 
       if (!(await tableExists("invoices"))) {
         console.log("🛠  Creating invoices table...");
-        database.prepare(`
+        database
+          .prepare(
+            `
           CREATE TABLE IF NOT EXISTS invoices (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             invoice_id TEXT UNIQUE NOT NULL,
@@ -115,13 +133,17 @@ export const initializeSchema = async (): Promise<void> => {
             FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
             FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
           )
-        `).run();
+        `
+          )
+          .run();
         console.log("✅ invoices table created");
       }
 
       if (!(await tableExists("operations_trip_notes"))) {
         console.log("🛠  Creating operations_trip_notes table...");
-        database.prepare(`
+        database
+          .prepare(
+            `
           CREATE TABLE IF NOT EXISTS operations_trip_notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             trip_id INTEGER NOT NULL,
@@ -134,7 +156,9 @@ export const initializeSchema = async (): Promise<void> => {
             FOREIGN KEY (trip_id) REFERENCES operations_trips(id) ON DELETE CASCADE,
             FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
           )
-        `).run();
+        `
+          )
+          .run();
         console.log("✅ operations_trip_notes table created");
       }
 
@@ -385,7 +409,39 @@ export const initializeSchema = async (): Promise<void> => {
     }
 
     const schema = fs.readFileSync(schemaPath, "utf-8");
-    database.exec(schema);
+
+    // Check if we're using SQLite (better-sqlite3) or Turso
+    if (useTurso && tursoClient) {
+      // For Turso, split schema into individual statements and execute them
+      const statements = schema
+        .split(";")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && !s.startsWith("--"));
+
+      for (const statement of statements) {
+        if (statement.trim()) {
+          try {
+            await tursoClient.execute(statement);
+          } catch (error: any) {
+            // Ignore errors for statements that might already exist (like PRAGMA)
+            if (
+              !error.message?.includes("already exists") &&
+              !error.message?.includes("duplicate")
+            ) {
+              console.warn(`⚠️  Warning executing statement: ${error.message}`);
+            }
+          }
+        }
+      }
+    } else if (database && typeof database.exec === "function") {
+      // For better-sqlite3, use exec method
+      database.exec(schema);
+    } else {
+      throw new Error(
+        "Database not properly initialized or unsupported database type. Expected SQLite database with exec method."
+      );
+    }
+
     console.log("✅ Database schema created successfully");
 
     // Create default admin user
@@ -605,8 +661,8 @@ const initializeTurso = (): Client => {
   if (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN) {
     throw new Error(
       "Turso configuration required for Vercel deployment. " +
-      "Please set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN environment variables. " +
-      "See TURSO_QUICKSTART.md for setup instructions."
+        "Please set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN environment variables. " +
+        "See TURSO_QUICKSTART.md for setup instructions."
     );
   }
 
@@ -635,7 +691,7 @@ const initializeSQLite = (): Database.Database => {
   try {
     const dbPath = path.join(process.cwd(), "database.db");
     const dbDir = path.dirname(dbPath);
-    
+
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
     }
@@ -657,7 +713,7 @@ const initializeSQLite = (): Database.Database => {
 
 // Initialize database connection
 export const initializeDatabase = (): any => {
-  if (useTurso || isVercel) {
+  if (useTurso) {
     return initializeTurso();
   } else {
     return initializeSQLite();
@@ -666,7 +722,7 @@ export const initializeDatabase = (): any => {
 
 // Get database instance
 export const getDatabase = (): any => {
-  if (useTurso || isVercel) {
+  if (useTurso) {
     if (!tursoClient) {
       return initializeTurso();
     }
@@ -717,6 +773,1122 @@ export const closeDatabase = (): void => {
   if (db) {
     db.close();
     db = undefined as any;
+  }
+};
+
+// Helper function to check if a table is empty (Turso-compatible)
+const checkTableEmptyTurso = async (tableName: string): Promise<boolean> => {
+  if (!useTurso || !tursoClient) {
+    return false;
+  }
+  try {
+    const result = await tursoClient.execute({
+      sql: `SELECT COUNT(*) as count FROM ${tableName}`,
+      args: [],
+    });
+    const count = (result.rows[0] as any)?.count || 0;
+    return count === 0;
+  } catch (error: any) {
+    // Table might not exist yet, treat as empty
+    if (error.message?.includes("no such table")) {
+      return true;
+    }
+    console.warn(`⚠️  Warning checking table ${tableName}:`, error.message);
+    return false;
+  }
+};
+
+// Helper function to get last insert ID (Turso-compatible)
+const getLastInsertIdTurso = async (): Promise<number> => {
+  if (!useTurso || !tursoClient) {
+    throw new Error("Turso client not available");
+  }
+  try {
+    const result = await tursoClient.execute({
+      sql: "SELECT last_insert_rowid() as id",
+      args: [],
+    });
+    return (result.rows[0] as any)?.id || 0;
+  } catch (error: any) {
+    console.warn("⚠️  Warning getting last insert ID:", error.message);
+    return 0;
+  }
+};
+
+// Seed minimal essential data for Turso (Vercel deployment)
+export const seedMinimalDataForTurso = async (): Promise<void> => {
+  // Only run on Turso
+  if (!useTurso || !tursoClient) {
+    return;
+  }
+
+  try {
+    console.log("🌱 Checking and seeding minimal data for Turso...");
+
+    // Check if we need to seed at all
+    const usersEmpty = await checkTableEmptyTurso("users");
+    const customersEmpty = await checkTableEmptyTurso("customers");
+    const leadsEmpty = await checkTableEmptyTurso("leads");
+    const suppliersEmpty = await checkTableEmptyTurso("suppliers");
+    const reservationsEmpty = await checkTableEmptyTurso("reservations");
+    const departmentsEmpty = await checkTableEmptyTurso("departments");
+    const salesCasesEmpty = await checkTableEmptyTurso("sales_cases");
+    const propertiesEmpty = await checkTableEmptyTurso("properties");
+    const propertyOwnersEmpty = await checkTableEmptyTurso("property_owners");
+    const operationsTripsEmpty = await checkTableEmptyTurso("operations_trips");
+    const categoriesEmpty = await checkTableEmptyTurso("categories");
+    const itemsEmpty = await checkTableEmptyTurso("items");
+    const supportTicketsEmpty = await checkTableEmptyTurso("support_tickets");
+    const notificationsEmpty = await checkTableEmptyTurso("notifications");
+
+    const needsSeeding =
+      usersEmpty ||
+      customersEmpty ||
+      leadsEmpty ||
+      suppliersEmpty ||
+      reservationsEmpty ||
+      departmentsEmpty ||
+      salesCasesEmpty ||
+      propertiesEmpty ||
+      propertyOwnersEmpty ||
+      operationsTripsEmpty ||
+      categoriesEmpty ||
+      itemsEmpty ||
+      supportTicketsEmpty ||
+      notificationsEmpty;
+
+    if (!needsSeeding) {
+      console.log("ℹ️  All tables already have data, skipping seed");
+      return;
+    }
+
+    let adminUserId: number | null = null;
+
+    // 1. Seed admin user if users table is empty
+    if (usersEmpty) {
+      console.log("   Creating admin user...");
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash("password", saltRounds);
+
+      await tursoClient.execute({
+        sql: `INSERT INTO users (email, password, full_name, role, status) 
+              VALUES (?, ?, ?, ?, ?)`,
+        args: [
+          "admin@example.com",
+          hashedPassword,
+          "System Administrator",
+          "admin",
+          "active",
+        ],
+      });
+
+      adminUserId = await getLastInsertIdTurso();
+      console.log("✅ Admin user created");
+    } else {
+      // Get existing admin user ID
+      const result = await tursoClient.execute({
+        sql: "SELECT id FROM users WHERE email = ?",
+        args: ["admin@example.com"],
+      });
+      if (result.rows.length > 0) {
+        adminUserId = (result.rows[0] as any).id;
+      }
+    }
+
+    if (!adminUserId) {
+      console.log("⚠️  Admin user not found, skipping seed data");
+      return;
+    }
+
+    // 2. Seed departments (3 records)
+    if (departmentsEmpty) {
+      console.log("   Creating departments...");
+      const departments = [
+        ["Sales", "Sales and customer acquisition"],
+        ["Operations", "Operations and logistics"],
+        ["Support", "Customer support and service"],
+      ];
+
+      for (const [name, description] of departments) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO departments (name, description, manager_id) 
+                VALUES (?, ?, ?)`,
+          args: [name, description, null],
+        });
+      }
+      console.log("✅ Departments created");
+    }
+
+    // 3. Seed suppliers (3 records)
+    const supplierIds: number[] = [];
+    if (suppliersEmpty) {
+      console.log("   Creating suppliers...");
+      const suppliers = [
+        [
+          "Airline Express",
+          "John Smith",
+          "+1234567890",
+          "contact@airline.com",
+          "123 Airport Rd",
+          "Flight booking, Tickets",
+          "Active",
+        ],
+        [
+          "Hotel Grand",
+          "Sarah Johnson",
+          "+1234567891",
+          "sales@hotel.com",
+          "456 Main St",
+          "Hotel booking, Accommodation",
+          "Active",
+        ],
+        [
+          "Car Rental Pro",
+          "Mike Brown",
+          "+1234567892",
+          "info@carrental.com",
+          "789 Auto Ave",
+          "Car rental, Transportation",
+          "Active",
+        ],
+      ];
+
+      for (const [
+        name,
+        contact,
+        phone,
+        email,
+        address,
+        services,
+        status,
+      ] of suppliers) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO suppliers (name, contact_person, phone, email, address, services, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          args: [name, contact, phone, email, address, services, status],
+        });
+        const supplierId = await getLastInsertIdTurso();
+        if (supplierId) supplierIds.push(supplierId);
+      }
+      console.log("✅ Suppliers created");
+    } else {
+      // Get existing supplier IDs
+      const result = await tursoClient.execute({
+        sql: "SELECT id FROM suppliers LIMIT 3",
+        args: [],
+      });
+      supplierIds.push(...result.rows.map((row: any) => row.id));
+    }
+
+    // 4. Seed customers (3 records)
+    const customerIds: number[] = [];
+    if (customersEmpty) {
+      console.log("   Creating customers...");
+      const timestamp = Date.now().toString().slice(-8);
+      const customers = [
+        [
+          `CU-${timestamp}1`,
+          "Alice Johnson",
+          "alice@example.com",
+          "+1987654321",
+          null,
+          "Individual",
+          "Active",
+          "Email",
+          null,
+        ],
+        [
+          `CU-${timestamp}2`,
+          "Tech Corp",
+          "info@techcorp.com",
+          "+1987654322",
+          "Tech Corp Inc",
+          "Corporate",
+          "Active",
+          "Phone",
+          null,
+        ],
+        [
+          `CU-${timestamp}3`,
+          "Bob Williams",
+          "bob@example.com",
+          "+1987654323",
+          null,
+          "Individual",
+          "Active",
+          "SMS",
+          null,
+        ],
+      ];
+
+      for (const [
+        customerId,
+        name,
+        email,
+        phone,
+        company,
+        type,
+        status,
+        contactMethod,
+        assignedStaff,
+      ] of customers) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO customers (customer_id, name, email, phone, company, type, status, contact_method, assigned_staff_id) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            customerId,
+            name,
+            email,
+            phone,
+            company,
+            type,
+            status,
+            contactMethod,
+            assignedStaff,
+          ],
+        });
+        const customerIdNum = await getLastInsertIdTurso();
+        if (customerIdNum) customerIds.push(customerIdNum);
+      }
+      console.log("✅ Customers created");
+    } else {
+      // Get existing customer IDs
+      const result = await tursoClient.execute({
+        sql: "SELECT id FROM customers LIMIT 3",
+        args: [],
+      });
+      customerIds.push(...result.rows.map((row: any) => row.id));
+    }
+
+    // 5. Seed leads (3 records)
+    if (leadsEmpty && customerIds.length > 0) {
+      console.log("   Creating leads...");
+      const timestamp = Date.now().toString().slice(-8);
+      const leads = [
+        [
+          `LD-${timestamp}1`,
+          "David Lee",
+          "david@example.com",
+          "+1122334455",
+          null,
+          "Website",
+          "B2C",
+          "New",
+          null,
+          5000,
+        ],
+        [
+          `LD-${timestamp}2`,
+          "Enterprise Solutions",
+          "sales@enterprise.com",
+          "+1122334456",
+          "Enterprise Solutions",
+          "Social Media",
+          "B2B",
+          "Qualified",
+          null,
+          25000,
+        ],
+        [
+          `LD-${timestamp}3`,
+          "Emma Davis",
+          "emma@example.com",
+          "+1122334457",
+          null,
+          "Referral",
+          "B2C",
+          "Contacted",
+          null,
+          3000,
+        ],
+      ];
+
+      for (const [
+        leadId,
+        name,
+        email,
+        phone,
+        company,
+        source,
+        type,
+        status,
+        agentId,
+        value,
+      ] of leads) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO leads (lead_id, name, email, phone, company, source, type, status, agent_id, value) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            leadId,
+            name,
+            email,
+            phone,
+            company,
+            source,
+            type,
+            status,
+            agentId,
+            value,
+          ],
+        });
+      }
+      console.log("✅ Leads created");
+    }
+
+    // 6. Seed reservations (3 records)
+    if (reservationsEmpty && customerIds.length > 0 && supplierIds.length > 0) {
+      console.log("   Creating reservations...");
+      const timestamp = Date.now().toString().slice(-8);
+      const futureDate1 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+      const futureDate2 = new Date(Date.now() + 37 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+      const futureDate3 = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+      const futureDate4 = new Date(Date.now() + 52 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+
+      const reservations = [
+        [
+          `RES-${timestamp}1`,
+          customerIds[0],
+          supplierIds[0],
+          "Flight",
+          "Paris, France",
+          futureDate1,
+          futureDate2,
+          2,
+          0,
+          0,
+          2500.0,
+          "Confirmed",
+          "Paid",
+          adminUserId,
+        ],
+        [
+          `RES-${timestamp}2`,
+          customerIds[1] || customerIds[0],
+          supplierIds[1] || supplierIds[0],
+          "Hotel",
+          "Tokyo, Japan",
+          futureDate3,
+          futureDate4,
+          4,
+          2,
+          0,
+          4500.0,
+          "Pending",
+          "Partial",
+          adminUserId,
+        ],
+        [
+          `RES-${timestamp}3`,
+          customerIds[2] || customerIds[0],
+          supplierIds[2] || supplierIds[0],
+          "Car Rental",
+          "Dubai, UAE",
+          futureDate1,
+          futureDate2,
+          2,
+          0,
+          0,
+          300.0,
+          "Pending",
+          "Pending",
+          adminUserId,
+        ],
+      ];
+
+      for (const [
+        reservationId,
+        customerId,
+        supplierId,
+        serviceType,
+        destination,
+        departureDate,
+        returnDate,
+        adults,
+        children,
+        infants,
+        totalAmount,
+        status,
+        paymentStatus,
+        createdBy,
+      ] of reservations) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO reservations (reservation_id, customer_id, supplier_id, service_type, destination, departure_date, return_date, adults, children, infants, total_amount, status, payment_status, created_by) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            reservationId,
+            customerId,
+            supplierId,
+            serviceType,
+            destination,
+            departureDate,
+            returnDate,
+            adults,
+            children,
+            infants,
+            totalAmount,
+            status,
+            paymentStatus,
+            createdBy,
+          ],
+        });
+      }
+      console.log("✅ Reservations created");
+    }
+
+    // 7. Seed sales cases (3 records)
+    if (salesCasesEmpty && customerIds.length > 0) {
+      console.log("   Creating sales cases...");
+      const timestamp = Date.now().toString().slice(-8);
+      const futureDate1 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+      const futureDate2 = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+      const futureDate3 = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+
+      const salesCases = [
+        [
+          `SC-${timestamp}1`,
+          customerIds[0],
+          null,
+          "Premium Travel Package",
+          "Corporate travel package for 20 employees",
+          "Quoted",
+          "B2B",
+          "Sent",
+          50000.0,
+          75,
+          futureDate1,
+          null,
+          adminUserId,
+        ],
+        [
+          `SC-${timestamp}2`,
+          customerIds[1] || customerIds[0],
+          null,
+          "Family Vacation Package",
+          "All-inclusive family vacation to Maldives",
+          "In Progress",
+          "B2C",
+          "Draft",
+          15000.0,
+          60,
+          futureDate2,
+          null,
+          adminUserId,
+        ],
+        [
+          `SC-${timestamp}3`,
+          customerIds[2] || customerIds[0],
+          null,
+          "Weekend Getaway Package",
+          "City break for two with spa access",
+          "Open",
+          "B2C",
+          "Draft",
+          1200.0,
+          40,
+          futureDate3,
+          null,
+          adminUserId,
+        ],
+      ];
+
+      for (const [
+        caseId,
+        customerId,
+        leadId,
+        title,
+        description,
+        status,
+        caseType,
+        quotationStatus,
+        value,
+        probability,
+        expectedCloseDate,
+        assignedTo,
+        createdBy,
+      ] of salesCases) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO sales_cases (case_id, customer_id, lead_id, title, description, status, case_type, quotation_status, value, probability, expected_close_date, assigned_to, created_by) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            caseId,
+            customerId,
+            leadId,
+            title,
+            description,
+            status,
+            caseType,
+            quotationStatus,
+            value,
+            probability,
+            expectedCloseDate,
+            assignedTo,
+            createdBy,
+          ],
+        });
+      }
+      console.log("✅ Sales cases created");
+    }
+
+    // 8. Seed property owners (3 records)
+    const ownerIds: number[] = [];
+    if (propertyOwnersEmpty) {
+      console.log("   Creating property owners...");
+      const timestamp = Date.now().toString().slice(-8);
+      const owners = [
+        [
+          `PO-${timestamp}1`,
+          "Luxury Properties LLC",
+          "Robert Chen",
+          "robert@luxuryprops.com",
+          "+1987654325",
+          "Active",
+          15,
+          "Dubai, Paris, Tokyo",
+          null,
+        ],
+        [
+          `PO-${timestamp}2`,
+          "Beachfront Realty",
+          "Maria Garcia",
+          "maria@beachfront.com",
+          "+1987654326",
+          "Active",
+          8,
+          "Maldives, Bali, Phuket",
+          null,
+        ],
+        [
+          `PO-${timestamp}3`,
+          "City Apartments Inc",
+          "James Wilson",
+          "james@cityapts.com",
+          "+1987654327",
+          "Active",
+          12,
+          "New York, London, Tokyo",
+          null,
+        ],
+      ];
+
+      for (const [
+        ownerId,
+        companyName,
+        primaryContact,
+        email,
+        phone,
+        status,
+        portfolioSize,
+        locations,
+        managerId,
+      ] of owners) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO property_owners (owner_id, company_name, primary_contact, email, phone, status, portfolio_size, locations, manager_id) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            ownerId,
+            companyName,
+            primaryContact,
+            email,
+            phone,
+            status,
+            portfolioSize,
+            locations,
+            managerId,
+          ],
+        });
+        const ownerIdNum = await getLastInsertIdTurso();
+        if (ownerIdNum) ownerIds.push(ownerIdNum);
+      }
+      console.log("✅ Property owners created");
+    } else {
+      // Get existing owner IDs
+      const result = await tursoClient.execute({
+        sql: "SELECT id FROM property_owners LIMIT 3",
+        args: [],
+      });
+      ownerIds.push(...result.rows.map((row: any) => row.id));
+    }
+
+    // 9. Seed properties (3 records)
+    if (propertiesEmpty && ownerIds.length > 0) {
+      console.log("   Creating properties...");
+      const timestamp = Date.now().toString().slice(-8);
+      const properties = [
+        [
+          `PROP-${timestamp}1`,
+          ownerIds[0],
+          "Luxury Villa Dubai Marina",
+          "Dubai, UAE",
+          "Villa",
+          "Available",
+          500.0,
+          8,
+          0,
+          "Spacious 4-bedroom villa with private pool",
+        ],
+        [
+          `PROP-${timestamp}2`,
+          ownerIds[1] || ownerIds[0],
+          "Paris Apartment Champs-Élysées",
+          "Paris, France",
+          "Apartment",
+          "Reserved",
+          300.0,
+          4,
+          2,
+          "Elegant 2-bedroom apartment in city center",
+        ],
+        [
+          `PROP-${timestamp}3`,
+          ownerIds[2] || ownerIds[0],
+          "Beachfront Villa Maldives",
+          "Maldives",
+          "Villa",
+          "Available",
+          800.0,
+          6,
+          0,
+          "Private beachfront villa with ocean view",
+        ],
+      ];
+
+      for (const [
+        propertyId,
+        ownerId,
+        name,
+        location,
+        propertyType,
+        status,
+        nightlyRate,
+        capacity,
+        occupancy,
+        description,
+      ] of properties) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO properties (property_id, owner_id, name, location, property_type, status, nightly_rate, capacity, occupancy, description) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            propertyId,
+            ownerId,
+            name,
+            location,
+            propertyType,
+            status,
+            nightlyRate,
+            capacity,
+            occupancy,
+            description,
+          ],
+        });
+      }
+      console.log("✅ Properties created");
+    }
+
+    // 10. Seed operations trips (3 records)
+    if (operationsTripsEmpty) {
+      console.log("   Creating operations trips...");
+      const timestamp = Date.now().toString().slice(-8);
+      const futureDate1 = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+      const futureDate2 = new Date(Date.now() + 18 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+      const futureDate3 = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+      const futureDate4 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0];
+
+      const trips = [
+        [
+          `TRIP-${timestamp}1`,
+          `BR-${timestamp}1`,
+          "Alice Johnson",
+          2,
+          "Day 1: Arrival, Day 2-3: City Tour, Day 4: Departure",
+          "3 days",
+          futureDate1,
+          futureDate2,
+          "Paris, France",
+          "Jean Pierre",
+          "Marc Dubois",
+          "Van",
+          "Mercedes Sprinter",
+          "Planned",
+          "Vegetarian meals required",
+        ],
+        [
+          `TRIP-${timestamp}2`,
+          `BR-${timestamp}2`,
+          "Tech Corp Group",
+          15,
+          "Corporate team building trip",
+          "5 days",
+          futureDate3,
+          futureDate4,
+          "Tokyo, Japan",
+          "Yuki Tanaka",
+          "Hiroshi Yamamoto",
+          "Bus",
+          "50-seater coach",
+          "In Progress",
+          "Business class flights",
+        ],
+        [
+          `TRIP-${timestamp}3`,
+          `BR-${timestamp}3`,
+          "Family Group",
+          4,
+          "Family vacation package",
+          "7 days",
+          futureDate1,
+          futureDate2,
+          "Maldives",
+          "Ahmed Hassan",
+          "Mohammed Ali",
+          "Van",
+          "Toyota Hiace",
+          "Planned",
+          "Child-friendly activities",
+        ],
+      ];
+
+      for (const [
+        tripCode,
+        bookingRef,
+        customerName,
+        customerCount,
+        itinerary,
+        duration,
+        startDate,
+        endDate,
+        destinations,
+        assignedGuide,
+        assignedDriver,
+        transport,
+        transportDetails,
+        status,
+        specialRequests,
+      ] of trips) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO operations_trips (trip_code, booking_reference, customer_name, customer_count, itinerary, duration, start_date, end_date, destinations, assigned_guide, assigned_driver, transport, transport_details, status, special_requests) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            tripCode,
+            bookingRef,
+            customerName,
+            customerCount,
+            itinerary,
+            duration,
+            startDate,
+            endDate,
+            destinations,
+            assignedGuide,
+            assignedDriver,
+            transport,
+            transportDetails,
+            status,
+            specialRequests,
+          ],
+        });
+      }
+      console.log("✅ Operations trips created");
+    }
+
+    // 11. Seed categories (3 records)
+    const categoryIds: number[] = [];
+    if (categoriesEmpty) {
+      console.log("   Creating categories...");
+      const categories = [
+        ["Accommodation", "Hotels, Resorts, Apartments"],
+        ["Transportation", "Flights, Car Rentals, Transfers"],
+        ["Tours", "City Tours, Excursions, Activities"],
+      ];
+
+      for (const [name, description] of categories) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO categories (name, description) 
+                VALUES (?, ?)`,
+          args: [name, description],
+        });
+        const categoryId = await getLastInsertIdTurso();
+        if (categoryId) categoryIds.push(categoryId);
+      }
+      console.log("✅ Categories created");
+    } else {
+      // Get existing category IDs
+      const result = await tursoClient.execute({
+        sql: "SELECT id FROM categories LIMIT 3",
+        args: [],
+      });
+      categoryIds.push(...result.rows.map((row: any) => row.id));
+    }
+
+    // 12. Seed items (3 records)
+    if (itemsEmpty && categoryIds.length > 0 && supplierIds.length > 0) {
+      console.log("   Creating items...");
+      const timestamp = Date.now().toString().slice(-8);
+      const items = [
+        [
+          `ITEM-${timestamp}1`,
+          "Standard Hotel Room",
+          "Comfortable room with basic amenities",
+          categoryIds[0],
+          supplierIds[0],
+          150.0,
+          100.0,
+          50,
+          10,
+          "Active",
+        ],
+        [
+          `ITEM-${timestamp}2`,
+          "Economy Flight Ticket",
+          "One-way economy class flight",
+          categoryIds[1] || categoryIds[0],
+          supplierIds[0],
+          500.0,
+          350.0,
+          100,
+          20,
+          "Active",
+        ],
+        [
+          `ITEM-${timestamp}3`,
+          "City Tour Package",
+          "Half-day guided city tour",
+          categoryIds[2] || categoryIds[0],
+          supplierIds[0],
+          75.0,
+          50.0,
+          200,
+          30,
+          "Active",
+        ],
+      ];
+
+      for (const [
+        itemId,
+        name,
+        description,
+        categoryId,
+        supplierId,
+        price,
+        cost,
+        stockQuantity,
+        minStockLevel,
+        status,
+      ] of items) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO items (item_id, name, description, category_id, supplier_id, price, cost, stock_quantity, min_stock_level, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            itemId,
+            name,
+            description,
+            categoryId,
+            supplierId,
+            price,
+            cost,
+            stockQuantity,
+            minStockLevel,
+            status,
+          ],
+        });
+      }
+      console.log("✅ Items created");
+    }
+
+    // 13. Seed support tickets (3 records)
+    if (supportTicketsEmpty && customerIds.length > 0) {
+      console.log("   Creating support tickets...");
+      const tickets = [
+        [
+          customerIds[0],
+          "Need help with booking modification",
+          "I would like to change my travel dates for the Paris trip.",
+          "Medium",
+          "Open",
+          null,
+        ],
+        [
+          customerIds[1] || customerIds[0],
+          "Payment issue",
+          "There seems to be an issue with my payment transaction.",
+          "High",
+          "In Progress",
+          null,
+        ],
+        [
+          customerIds[2] || customerIds[0],
+          "General inquiry",
+          "I have questions about your services.",
+          "Low",
+          "Open",
+          null,
+        ],
+      ];
+
+      for (const [
+        customerId,
+        subject,
+        description,
+        priority,
+        status,
+        assignedTo,
+      ] of tickets) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO support_tickets (customer_id, subject, description, priority, status, assigned_to) 
+                VALUES (?, ?, ?, ?, ?, ?)`,
+          args: [
+            customerId,
+            subject,
+            description,
+            priority,
+            status,
+            assignedTo,
+          ],
+        });
+      }
+      console.log("✅ Support tickets created");
+    }
+
+    // 14. Seed notifications (3 records)
+    if (notificationsEmpty && adminUserId) {
+      console.log("   Creating notifications...");
+      const notifications = [
+        [
+          adminUserId,
+          "lead",
+          "New Lead Assigned",
+          "You have been assigned a new lead",
+          "lead",
+          "1",
+          0,
+          null,
+        ],
+        [
+          adminUserId,
+          "customer",
+          "Customer Update",
+          "A customer has updated their profile",
+          "customer",
+          "1",
+          1,
+          new Date().toISOString(),
+        ],
+        [
+          adminUserId,
+          "system",
+          "Weekly Report Ready",
+          "Your weekly sales report is ready for review",
+          "system",
+          null,
+          0,
+          null,
+        ],
+      ];
+
+      for (const [
+        userId,
+        type,
+        title,
+        message,
+        entityType,
+        entityId,
+        isRead,
+        readAt,
+      ] of notifications) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO notifications (user_id, type, title, message, entity_type, entity_id, is_read, read_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            userId,
+            type,
+            title,
+            message,
+            entityType,
+            entityId,
+            isRead,
+            readAt,
+          ],
+        });
+      }
+      console.log("✅ Notifications created");
+    }
+
+    // 15. Seed permissions/role_permissions if empty
+    const permissionsEmpty = await checkTableEmptyTurso("permissions");
+    if (permissionsEmpty) {
+      console.log("   Creating essential permissions...");
+      // Create a few essential permissions
+      const essentialPermissions = [
+        ["Read Customers", "customers", "read", "Permission to read customers"],
+        [
+          "Create Customers",
+          "customers",
+          "create",
+          "Permission to create customers",
+        ],
+        [
+          "Read Reservations",
+          "reservations",
+          "read",
+          "Permission to read reservations",
+        ],
+        [
+          "Create Reservations",
+          "reservations",
+          "create",
+          "Permission to create reservations",
+        ],
+      ];
+
+      const permissionIds: number[] = [];
+      for (const [name, module, action, description] of essentialPermissions) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO permissions (name, module, action, description) 
+                VALUES (?, ?, ?, ?)`,
+          args: [name, module, action, description],
+        });
+        const permId = await getLastInsertIdTurso();
+        if (permId) permissionIds.push(permId);
+      }
+
+      // Assign permissions to admin role
+      for (const permId of permissionIds) {
+        await tursoClient.execute({
+          sql: `INSERT OR IGNORE INTO role_permissions (role, permission_id) 
+                VALUES (?, ?)`,
+          args: ["admin", permId],
+        });
+      }
+      console.log("✅ Essential permissions created");
+    }
+
+    console.log("✅ Minimal seed data for Turso completed successfully");
+  } catch (error: any) {
+    console.error("❌ Failed to seed minimal data for Turso:", error.message);
+    if (error.stack) {
+      console.error(error.stack);
+    }
+    // Don't throw - allow app to continue even if seeding fails
   }
 };
 

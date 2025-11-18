@@ -11,6 +11,7 @@ import {
   testConnection,
   initializeDatabase,
   seedData,
+  seedMinimalDataForTurso,
 } from "./config/database";
 import { seedDemoUsers } from "./seed/demoUsers";
 
@@ -116,10 +117,20 @@ const startServer = async () => {
     // Initialize schema and seed data before starting server
     const { initializeSchema } = await import("./config/database");
     await initializeSchema();
-    // Seed core demo data if empty
-    await seedData();
-    // Seed demo users after schema init
-    await seedDemoUsers();
+    
+    // Seed data based on database type
+    const isVercel = process.env.VERCEL === "1";
+    const useTurso = isVercel && !!(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+    
+    if (useTurso) {
+      // Use Turso-compatible seed function for Vercel
+      await seedMinimalDataForTurso();
+    } else {
+      // Use SQLite seed functions for local dev
+      await seedData();
+      // Seed demo users after schema init
+      await seedDemoUsers();
+    }
 
     // Test database connection
     const dbConnected = await testConnection();
