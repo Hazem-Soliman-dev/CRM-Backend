@@ -19,6 +19,8 @@ const useTurso =
 let db: Database.Database | null = null;
 let tursoClient: Client | null = null;
 let schemaInitialized = false;
+let tursoSeedingInProgress = false;
+let tursoSeedingCompleted = false;
 
 // Check if a table exists
 const tableExists = async (tableName: string): Promise<boolean> => {
@@ -822,45 +824,42 @@ export const seedMinimalDataForTurso = async (): Promise<void> => {
     return;
   }
 
+  // Prevent multiple simultaneous seed operations
+  if (tursoSeedingInProgress) {
+    console.log("ℹ️  Turso seeding already in progress, skipping...");
+    return;
+  }
+
+  // Skip if already completed
+  if (tursoSeedingCompleted) {
+    console.log("ℹ️  Turso seeding already completed, skipping...");
+    return;
+  }
+
+  tursoSeedingInProgress = true;
+
   try {
     console.log("🌱 Checking and seeding minimal data for Turso...");
 
-    // Check if we need to seed at all
+    // Check if we need to seed at all - only check a few key tables first
+    // This is faster and prevents timeout on Vercel
     const usersEmpty = await checkTableEmptyTurso("users");
-    const customersEmpty = await checkTableEmptyTurso("customers");
-    const leadsEmpty = await checkTableEmptyTurso("leads");
-    const suppliersEmpty = await checkTableEmptyTurso("suppliers");
-    const reservationsEmpty = await checkTableEmptyTurso("reservations");
-    const departmentsEmpty = await checkTableEmptyTurso("departments");
-    const salesCasesEmpty = await checkTableEmptyTurso("sales_cases");
-    const propertiesEmpty = await checkTableEmptyTurso("properties");
-    const propertyOwnersEmpty = await checkTableEmptyTurso("property_owners");
-    const operationsTripsEmpty = await checkTableEmptyTurso("operations_trips");
-    const categoriesEmpty = await checkTableEmptyTurso("categories");
-    const itemsEmpty = await checkTableEmptyTurso("items");
-    const supportTicketsEmpty = await checkTableEmptyTurso("support_tickets");
-    const notificationsEmpty = await checkTableEmptyTurso("notifications");
 
-    const needsSeeding =
-      usersEmpty ||
-      customersEmpty ||
-      leadsEmpty ||
-      suppliersEmpty ||
-      reservationsEmpty ||
-      departmentsEmpty ||
-      salesCasesEmpty ||
-      propertiesEmpty ||
-      propertyOwnersEmpty ||
-      operationsTripsEmpty ||
-      categoriesEmpty ||
-      itemsEmpty ||
-      supportTicketsEmpty ||
-      notificationsEmpty;
-
-    if (!needsSeeding) {
-      console.log("ℹ️  All tables already have data, skipping seed");
+    // If users table has data, assume seeding was already done
+    if (!usersEmpty) {
+      console.log(
+        "ℹ️  Users table has data, assuming seeding already completed"
+      );
+      tursoSeedingCompleted = true;
       return;
     }
+
+    // Only check other tables if users is empty
+    const customersEmpty = await checkTableEmptyTurso("customers");
+    const suppliersEmpty = await checkTableEmptyTurso("suppliers");
+    const departmentsEmpty = await checkTableEmptyTurso("departments");
+
+    // Since users is empty, we need to seed
 
     let adminUserId: number | null = null;
 
@@ -1060,8 +1059,8 @@ export const seedMinimalDataForTurso = async (): Promise<void> => {
       customerIds.push(...result.rows.map((row: any) => row.id));
     }
 
-    // 5. Seed leads (3 records)
-    if (leadsEmpty && customerIds.length > 0) {
+    // 5. Seed leads (3 records) - skip if customers not available
+    if (customerIds.length > 0) {
       console.log("   Creating leads...");
       const timestamp = Date.now().toString().slice(-8);
       const leads = [
@@ -1135,8 +1134,8 @@ export const seedMinimalDataForTurso = async (): Promise<void> => {
       console.log("✅ Leads created");
     }
 
-    // 6. Seed reservations (3 records)
-    if (reservationsEmpty && customerIds.length > 0 && supplierIds.length > 0) {
+    // 6. Seed reservations (3 records) - skip if dependencies not available
+    if (customerIds.length > 0 && supplierIds.length > 0) {
       console.log("   Creating reservations...");
       const timestamp = Date.now().toString().slice(-8);
       const futureDate1 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -1243,8 +1242,8 @@ export const seedMinimalDataForTurso = async (): Promise<void> => {
       console.log("✅ Reservations created");
     }
 
-    // 7. Seed sales cases (3 records)
-    if (salesCasesEmpty && customerIds.length > 0) {
+    // 7. Seed sales cases (3 records) - skip if customers not available
+    if (customerIds.length > 0) {
       console.log("   Creating sales cases...");
       const timestamp = Date.now().toString().slice(-8);
       const futureDate1 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -1343,9 +1342,9 @@ export const seedMinimalDataForTurso = async (): Promise<void> => {
       console.log("✅ Sales cases created");
     }
 
-    // 8. Seed property owners (3 records)
+    // 8. Seed property owners (3 records) - simplified, skip if takes too long
     const ownerIds: number[] = [];
-    if (propertyOwnersEmpty) {
+    try {
       console.log("   Creating property owners...");
       const timestamp = Date.now().toString().slice(-8);
       const owners = [
@@ -1414,17 +1413,12 @@ export const seedMinimalDataForTurso = async (): Promise<void> => {
         if (ownerIdNum) ownerIds.push(ownerIdNum);
       }
       console.log("✅ Property owners created");
-    } else {
-      // Get existing owner IDs
-      const result = await tursoClient.execute({
-        sql: "SELECT id FROM property_owners LIMIT 3",
-        args: [],
-      });
-      ownerIds.push(...result.rows.map((row: any) => row.id));
+    } catch (e: any) {
+      console.warn("⚠️  Skipping property owners due to error:", e.message);
     }
 
-    // 9. Seed properties (3 records)
-    if (propertiesEmpty && ownerIds.length > 0) {
+    // 9. Seed properties (3 records) - skip if owners not available
+    if (ownerIds.length > 0) {
       console.log("   Creating properties...");
       const timestamp = Date.now().toString().slice(-8);
       const properties = [
@@ -1498,8 +1492,8 @@ export const seedMinimalDataForTurso = async (): Promise<void> => {
       console.log("✅ Properties created");
     }
 
-    // 10. Seed operations trips (3 records)
-    if (operationsTripsEmpty) {
+    // 10. Seed operations trips (3 records) - simplified
+    try {
       console.log("   Creating operations trips...");
       const timestamp = Date.now().toString().slice(-8);
       const futureDate1 = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000)
@@ -1609,11 +1603,13 @@ export const seedMinimalDataForTurso = async (): Promise<void> => {
         });
       }
       console.log("✅ Operations trips created");
+    } catch (e: any) {
+      console.warn("⚠️  Skipping operations trips due to error:", e.message);
     }
 
     // 11. Seed categories (3 records)
     const categoryIds: number[] = [];
-    if (categoriesEmpty) {
+    try {
       console.log("   Creating categories...");
       const categories = [
         ["Accommodation", "Hotels, Resorts, Apartments"],
@@ -1631,17 +1627,22 @@ export const seedMinimalDataForTurso = async (): Promise<void> => {
         if (categoryId) categoryIds.push(categoryId);
       }
       console.log("✅ Categories created");
-    } else {
-      // Get existing category IDs
-      const result = await tursoClient.execute({
-        sql: "SELECT id FROM categories LIMIT 3",
-        args: [],
-      });
-      categoryIds.push(...result.rows.map((row: any) => row.id));
+    } catch (e: any) {
+      console.warn("⚠️  Skipping categories due to error:", e.message);
+      // Try to get existing category IDs
+      try {
+        const result = await tursoClient.execute({
+          sql: "SELECT id FROM categories LIMIT 3",
+          args: [],
+        });
+        categoryIds.push(...result.rows.map((row: any) => row.id));
+      } catch (e2: any) {
+        console.warn("⚠️  Could not get existing categories:", e2.message);
+      }
     }
 
-    // 12. Seed items (3 records)
-    if (itemsEmpty && categoryIds.length > 0 && supplierIds.length > 0) {
+    // 12. Seed items (3 records) - skip if dependencies not available
+    if (categoryIds.length > 0 && supplierIds.length > 0) {
       console.log("   Creating items...");
       const timestamp = Date.now().toString().slice(-8);
       const items = [
@@ -1715,8 +1716,8 @@ export const seedMinimalDataForTurso = async (): Promise<void> => {
       console.log("✅ Items created");
     }
 
-    // 13. Seed support tickets (3 records)
-    if (supportTicketsEmpty && customerIds.length > 0) {
+    // 13. Seed support tickets (3 records) - skip if customers not available
+    if (customerIds.length > 0) {
       console.log("   Creating support tickets...");
       const tickets = [
         [
@@ -1769,8 +1770,8 @@ export const seedMinimalDataForTurso = async (): Promise<void> => {
       console.log("✅ Support tickets created");
     }
 
-    // 14. Seed notifications (3 records)
-    if (notificationsEmpty && adminUserId) {
+    // 14. Seed notifications (3 records) - skip if admin user not available
+    if (adminUserId) {
       console.log("   Creating notifications...");
       const notifications = [
         [
@@ -1833,62 +1834,81 @@ export const seedMinimalDataForTurso = async (): Promise<void> => {
       console.log("✅ Notifications created");
     }
 
-    // 15. Seed permissions/role_permissions if empty
-    const permissionsEmpty = await checkTableEmptyTurso("permissions");
-    if (permissionsEmpty) {
-      console.log("   Creating essential permissions...");
-      // Create a few essential permissions
-      const essentialPermissions = [
-        ["Read Customers", "customers", "read", "Permission to read customers"],
-        [
-          "Create Customers",
-          "customers",
-          "create",
-          "Permission to create customers",
-        ],
-        [
-          "Read Reservations",
-          "reservations",
-          "read",
-          "Permission to read reservations",
-        ],
-        [
-          "Create Reservations",
-          "reservations",
-          "create",
-          "Permission to create reservations",
-        ],
-      ];
+    // 15. Seed permissions/role_permissions if empty - simplified, skip if takes too long
+    try {
+      const permissionsEmpty = await checkTableEmptyTurso("permissions");
+      if (permissionsEmpty) {
+        console.log("   Creating essential permissions...");
+        // Create a few essential permissions
+        const essentialPermissions = [
+          [
+            "Read Customers",
+            "customers",
+            "read",
+            "Permission to read customers",
+          ],
+          [
+            "Create Customers",
+            "customers",
+            "create",
+            "Permission to create customers",
+          ],
+          [
+            "Read Reservations",
+            "reservations",
+            "read",
+            "Permission to read reservations",
+          ],
+          [
+            "Create Reservations",
+            "reservations",
+            "create",
+            "Permission to create reservations",
+          ],
+        ];
 
-      const permissionIds: number[] = [];
-      for (const [name, module, action, description] of essentialPermissions) {
-        await tursoClient.execute({
-          sql: `INSERT OR IGNORE INTO permissions (name, module, action, description) 
+        const permissionIds: number[] = [];
+        for (const [
+          name,
+          module,
+          action,
+          description,
+        ] of essentialPermissions) {
+          await tursoClient.execute({
+            sql: `INSERT OR IGNORE INTO permissions (name, module, action, description) 
                 VALUES (?, ?, ?, ?)`,
-          args: [name, module, action, description],
-        });
-        const permId = await getLastInsertIdTurso();
-        if (permId) permissionIds.push(permId);
-      }
+            args: [name, module, action, description],
+          });
+          const permId = await getLastInsertIdTurso();
+          if (permId) permissionIds.push(permId);
+        }
 
-      // Assign permissions to admin role
-      for (const permId of permissionIds) {
-        await tursoClient.execute({
-          sql: `INSERT OR IGNORE INTO role_permissions (role, permission_id) 
+        // Assign permissions to admin role
+        for (const permId of permissionIds) {
+          await tursoClient.execute({
+            sql: `INSERT OR IGNORE INTO role_permissions (role, permission_id) 
                 VALUES (?, ?)`,
-          args: ["admin", permId],
-        });
+            args: ["admin", permId],
+          });
+        }
+        console.log("✅ Essential permissions created");
       }
-      console.log("✅ Essential permissions created");
+    } catch (e: any) {
+      console.warn("⚠️  Skipping permissions due to error:", e.message);
     }
 
     console.log("✅ Minimal seed data for Turso completed successfully");
+    tursoSeedingCompleted = true;
   } catch (error: any) {
     console.error("❌ Failed to seed minimal data for Turso:", error.message);
     if (error.stack) {
       console.error(error.stack);
     }
     // Don't throw - allow app to continue even if seeding fails
+    // Reset flag so it can be retried on next request
+    tursoSeedingCompleted = false;
+  } finally {
+    tursoSeedingInProgress = false;
   }
 };
 
