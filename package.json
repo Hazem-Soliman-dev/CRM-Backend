@@ -13,6 +13,7 @@
     "db:seed": "npx ts-node scripts/seedTestData.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.15.15",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.6.0",
     "compression": "^1.7.4",

@@ -162,8 +162,10 @@ process.on("SIGINT", () => {
   process.exit(0);
 });
 
-// Start the server
-startServer();
+// Start the server (skip in Vercel serverless mode)
+if (process.env.VERCEL !== "1") {
+  startServer();
+}
 
-// Export app for testing purposes
+// Export app for Vercel serverless
 export default app;
