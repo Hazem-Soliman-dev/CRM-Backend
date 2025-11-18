@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { createClient, Client } from "@libsql/client";
 import dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
@@ -6,28 +7,33 @@ import bcrypt from "bcryptjs";
 
 dotenv.config();
 
-// Determine database path - use persistent storage for Railway/production
-const dbPath = path.join(process.cwd(), "database.db");
+// Determine if we should use Turso (for Vercel) or local SQLite
+const useTurso = !!(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+const isVercel = process.env.VERCEL === "1";
 
-// Create database instance
-let db: Database.Database;
+// Database instances
+let db: Database.Database | null = null;
+let tursoClient: Client | null = null;
 let schemaInitialized = false;
 
 // Check if a table exists
-const tableExists = (
-  database: Database.Database,
+const tableExists = async (
   tableName: string
-): boolean => {
+): Promise<boolean> => {
   try {
-    const result = database
-      .prepare(
-        `
-      SELECT name FROM sqlite_master 
-      WHERE type='table' AND name=?
-    `
-      )
-      .get(tableName) as any;
-    return !!result;
+    if (useTurso && tursoClient) {
+      const result = await tursoClient.execute({
+        sql: "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        args: [tableName]
+      });
+      return result.rows.length > 0;
+    } else if (db) {
+      const result = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+      ).get(tableName) as any;
+      return !!result;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -43,12 +49,12 @@ export const initializeSchema = async (): Promise<void> => {
     const database = getDatabase();
 
     // Check if users table exists (indicates schema is initialized)
-    if (tableExists(database, "users")) {
+    if (await tableExists("users")) {
       schemaInitialized = true;
       console.log("ℹ️  Database schema already exists");
       
       // Check and create new tables if they don't exist (migration)
-      if (!tableExists(database, "reservation_notes")) {
+      if (!(await tableExists("reservation_notes"))) {
         console.log("🛠  Creating reservation_notes table...");
         database.prepare(`
           CREATE TABLE IF NOT EXISTS reservation_notes (
@@ -67,7 +73,7 @@ export const initializeSchema = async (): Promise<void> => {
         console.log("✅ reservation_notes table created");
       }
       
-      if (!tableExists(database, "reservation_documents")) {
+      if (!(await tableExists("reservation_documents"))) {
         console.log("🛠  Creating reservation_documents table...");
         database.prepare(`
           CREATE TABLE IF NOT EXISTS reservation_documents (
@@ -89,7 +95,7 @@ export const initializeSchema = async (): Promise<void> => {
         console.log("✅ reservation_documents table created");
       }
 
-      if (!tableExists(database, "invoices")) {
+      if (!(await tableExists("invoices"))) {
         console.log("🛠  Creating invoices table...");
         database.prepare(`
           CREATE TABLE IF NOT EXISTS invoices (
@@ -113,7 +119,7 @@ export const initializeSchema = async (): Promise<void> => {
         console.log("✅ invoices table created");
       }
 
-      if (!tableExists(database, "operations_trip_notes")) {
+      if (!(await tableExists("operations_trip_notes"))) {
         console.log("🛠  Creating operations_trip_notes table...");
         database.prepare(`
           CREATE TABLE IF NOT EXISTS operations_trip_notes (
@@ -590,44 +596,87 @@ export const initializeSchema = async (): Promise<void> => {
   }
 };
 
-// Initialize database connection
-export const initializeDatabase = (): Database.Database => {
+// Initialize Turso client
+const initializeTurso = (): Client => {
+  if (tursoClient) {
+    return tursoClient;
+  }
+
+  if (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN) {
+    throw new Error(
+      "Turso configuration required for Vercel deployment. " +
+      "Please set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN environment variables. " +
+      "See TURSO_QUICKSTART.md for setup instructions."
+    );
+  }
+
+  try {
+    tursoClient = createClient({
+      url: process.env.TURSO_DATABASE_URL,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    });
+
+    console.log("✅ Turso database client initialized");
+    console.log(`   URL: ${process.env.TURSO_DATABASE_URL}`);
+
+    return tursoClient;
+  } catch (error: any) {
+    console.error("❌ Failed to initialize Turso client:", error.message);
+    throw error;
+  }
+};
+
+// Initialize local SQLite
+const initializeSQLite = (): Database.Database => {
   if (db) {
     return db;
   }
 
   try {
-    // Ensure directory exists
+    const dbPath = path.join(process.cwd(), "database.db");
     const dbDir = path.dirname(dbPath);
+    
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
     }
 
     db = new Database(dbPath);
-
-    // Enable foreign keys
     db.pragma("foreign_keys = ON");
-
-    // Optimize for better performance
     db.pragma("journal_mode = WAL");
     db.pragma("synchronous = NORMAL");
 
-    console.log("✅ SQLite database initialized");
+    console.log("✅ SQLite database initialized (local)");
     console.log(`   Path: ${dbPath}`);
 
     return db;
   } catch (error: any) {
-    console.error("❌ Failed to initialize database:", error.message);
+    console.error("❌ Failed to initialize SQLite:", error.message);
     throw error;
   }
 };
 
-// Get database instance
-export const getDatabase = (): Database.Database => {
-  if (!db) {
-    return initializeDatabase();
+// Initialize database connection
+export const initializeDatabase = (): any => {
+  if (useTurso || isVercel) {
+    return initializeTurso();
+  } else {
+    return initializeSQLite();
   }
-  return db;
+};
+
+// Get database instance
+export const getDatabase = (): any => {
+  if (useTurso || isVercel) {
+    if (!tursoClient) {
+      return initializeTurso();
+    }
+    return tursoClient;
+  } else {
+    if (!db) {
+      return initializeSQLite();
+    }
+    return db;
+  }
 };
 
 // Test database connection
@@ -637,7 +686,6 @@ export const testConnection = async (): Promise<boolean> => {
     // Test with a simple query
     database.prepare("SELECT 1 as test").get();
     console.log("✅ Database connection successful");
-    console.log(`   Path: ${dbPath}`);
     return true;
   } catch (error: any) {
     console.error("❌ Database connection failed:", error.message);
