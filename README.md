@@ -1,13 +1,32 @@
 # Travel CRM Backend API
 
-A comprehensive backend API for the Travel CRM system built with Node.js, Express, TypeScript, and MySQL.
+A comprehensive backend API for the Travel CRM system built with Node.js, Express, TypeScript, and SQLite.
+
+## 🚀 Quick Deploy to Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone)
+
+**Ready to deploy in minutes!** This backend is pre-configured for Vercel serverless deployment with automatic database setup and demo data seeding.
+
+👉 **[See Full Deployment Guide](./DEPLOYMENT.md)** for step-by-step instructions.
+
+### Quick Start
+
+```bash
+cd backend
+vercel
+vercel env add JWT_SECRET production
+vercel --prod
+```
+
+Your API will be live at `https://your-project.vercel.app/api/v1`
 
 ## 🚀 Features
 
 - **Authentication**: JWT-based authentication with role-based access control
 - **RESTful APIs**: Complete CRUD operations for all entities
 - **Security**: SQL injection prevention, XSS protection, rate limiting
-- **Database**: MySQL with connection pooling
+- **Database**: SQLite with auto-initialization and demo data seeding
 - **Validation**: Input validation with express-validator
 - **Error Handling**: Comprehensive error handling and logging
 
@@ -84,29 +103,16 @@ A comprehensive backend API for the Travel CRM system built with Node.js, Expres
 - `GET /api/v1/dashboard/recent-activity` - Get recent activity
 - `GET /api/v1/dashboard/performance` - Get performance metrics
 
-## 🛠️ Setup Instructions
+## 🛠️ Local Development Setup
 
 ### Prerequisites
 
-1. **Node.js** (v16 or higher)
-2. **XAMPP** (for MySQL database)
-3. **Git**
+1. **Node.js** (v18 or higher)
+2. **npm** or **yarn**
 
-### 1. Database Setup
+### 1. Backend Setup
 
-1. **Install XAMPP** from [https://www.apachefriends.org/](https://www.apachefriends.org/)
-2. **Start XAMPP** and ensure MySQL service is running
-3. **Access phpMyAdmin** at `http://localhost/phpmyadmin`
-4. **Create Database**:
-   ```sql
-   CREATE DATABASE travel_crm;
-   ```
-5. **Import Schema**:
-   - Copy the content from `mysql_schema.sql`
-   - Paste it into phpMyAdmin SQL tab
-   - Execute the script
-
-### 2. Backend Setup
+**Note:** Database setup is automatic! The backend uses SQLite and creates/seeds the database on first run.
 
 1. **Navigate to backend directory**:
 
@@ -123,35 +129,23 @@ A comprehensive backend API for the Travel CRM system built with Node.js, Expres
 3. **Configure environment**:
 
    ```bash
-   cp .env.example .env
+   cp env.template .env
    ```
 
    Edit `.env` file with your settings:
 
    ```env
+   # Required
+   JWT_SECRET=your-super-secret-jwt-key-change-in-production
+
+   # Optional (defaults provided)
    NODE_ENV=development
    PORT=5000
-
-   # Database Configuration
-   DB_HOST=localhost
-   DB_PORT=3306
-   DB_USER=root
-   DB_PASSWORD=
-   DB_NAME=travel_crm
-
-   # JWT Configuration
-   JWT_SECRET=your-super-secret-jwt-key-change-in-production
    JWT_EXPIRES_IN=7d
    JWT_REFRESH_EXPIRES_IN=30d
-
-   # Security
-   BCRYPT_ROUNDS=10
-   RATE_LIMIT_WINDOW=15
-   RATE_LIMIT_MAX_REQUESTS=100
-
-   # CORS
-   FRONTEND_URL=http://localhost:5173
    ```
+
+   **That's it!** No database configuration needed - SQLite handles everything automatically.
 
 4. **Build the project**:
 
@@ -166,44 +160,19 @@ A comprehensive backend API for the Travel CRM system built with Node.js, Expres
 
 The server will start on `http://localhost:5000`
 
-### 3. Frontend Setup
+### 3. Login with Demo Accounts
 
-1. **Navigate to project root**:
+The backend automatically creates demo accounts on first run:
 
-   ```bash
-   cd ..
-   ```
+- **Admin:** `admin@example.com` / `password`
+- **Manager:** `manager1@example.com` / `password`
+- **Agent 1:** `agent1@example.com` / `password`
+- **Agent 2:** `agent2@example.com` / `password`
+- **Customer:** `customer1@example.com` / `password`
 
-2. **Install frontend dependencies**:
+### 4. Connecting Frontend
 
-   ```bash
-   npm install
-   ```
-
-3. **Configure frontend environment**:
-   Create `.env` file in project root:
-
-   ```env
-   VITE_API_BASE_URL=http://localhost:5000/api/v1
-   VITE_APP_TITLE=Travel CRM
-   VITE_APP_ENV=development
-   ```
-
-4. **Start frontend**:
-   ```bash
-   npm run dev
-   ```
-
-The frontend will start on `http://localhost:5173`
-
-### 4. Login Quickstart
-
-1. Ensure XAMPP's MySQL service is running and the `travel_crm` schema from `mysql_schema.sql` has been imported.
-2. Start the backend (`npm run dev`) and frontend (`npm run dev`) servers in separate terminals.
-3. Sign in from the frontend login page using one of the seeded accounts:
-   - Email: `admin@example.com`
-   - Password: `password`
-4. Confirm that you are redirected to the dashboard and that `localStorage` now contains `token`, `refreshToken`, and `user` entries provided by the backend API.
+See the frontend deployment guide for connecting the React frontend to this backend.
 
 ## 🔧 Development
 
@@ -256,9 +225,18 @@ Authorization: Bearer <your-jwt-token>
 - **agent**: Sales and customer management
 - **customer**: Limited access to own data
 
-## 📊 Database Schema
+## 📊 Database
 
-The system includes the following main entities:
+### SQLite with Auto-Setup
+
+This backend uses SQLite for zero-configuration setup:
+
+- **Local:** Database stored in `database.db`
+- **Vercel:** Database stored in `/tmp/database.db` (resets on deploy)
+- **Auto-initialization:** Schema created on first run
+- **Auto-seeding:** Demo data populated automatically
+
+### Main Entities
 
 - **users**: System users and authentication
 - **customers**: Customer information
@@ -269,30 +247,33 @@ The system includes the following main entities:
 - **suppliers**: Service providers
 - **categories**: Product/service categories
 - **items**: Products and services
+- **sales_cases**: Sales pipeline management
+- **operations_trips**: Operations and logistics
+- **properties**: Property management
+- **property_owners**: Property owner management
 
 ## 🚨 Troubleshooting
 
 ### Common Issues
 
-1. **Database Connection Error**:
+1. **Database Initialization Errors**:
 
-   - Ensure XAMPP MySQL is running
-   - Check database credentials in `.env`
-   - Verify database exists
+   - Delete `database.db` and restart the server
+   - Database will be recreated automatically
 
 2. **Port Already in Use**:
 
    - Change PORT in `.env` file
-   - Kill existing processes on port 5000
+   - Kill existing processes: `npx kill-port 5000`
 
-3. **CORS Issues**:
+3. **Missing JWT_SECRET**:
 
-   - Verify FRONTEND_URL in backend `.env`
-   - Check frontend API_BASE_URL
+   - Ensure `.env` file exists with JWT_SECRET
+   - Copy from `env.template` if needed
 
-4. **JWT Token Issues**:
-   - Ensure JWT_SECRET is set
-   - Check token expiration settings
+4. **Demo Data Not Loading**:
+   - Set `FORCE_DEMO_SEED=1` in `.env`
+   - Restart the server
 
 ### Logs
 
@@ -326,25 +307,26 @@ curl -X GET http://localhost:5000/api/v1/leads \
 
 ## 🔄 Deployment
 
-### Production Setup
+### Deploy to Vercel (Recommended for MVP)
 
-1. **Environment Variables**:
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for complete instructions.
 
-   - Set `NODE_ENV=production`
-   - Use strong JWT secrets
-   - Configure production database
+Quick deploy:
 
-2. **Database**:
+```bash
+vercel
+vercel env add JWT_SECRET production
+vercel --prod
+```
 
-   - Use production MySQL server
-   - Configure connection pooling
-   - Set up backups
+### Production Considerations
 
-3. **Security**:
-   - Enable HTTPS
-   - Configure CORS properly
-   - Set up rate limiting
-   - Use environment variables for secrets
+For production use beyond MVP:
+
+1. **Database**: Migrate from SQLite to Vercel Postgres, PlanetScale, or Supabase
+2. **Security**: Use strong JWT secrets from environment
+3. **Monitoring**: Set up logging and error tracking
+4. **Backups**: Implement regular database backups (if using persistent DB)
 
 ## 📞 Support
 
